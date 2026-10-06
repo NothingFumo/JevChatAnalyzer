@@ -1,0 +1,32 @@
+# 构建产物
+bin/
+obj/
+artifacts/
+publish/
+AppPackages/
+*.user
+*.suo
+.vs/
+
+# 测试
+TestResults/
+coverage/
+
+# 运行时数据（密钥、解密副本、历史库、模型缓存）一律不入库
+runtime/
+models/
+*.db
+*.db-wal
+*.db-shm
+
+# 第三方原生大文件占位（tools/ 下的 exe 显式跟踪）
+tools/*.zip
+
+# 日志
+*.log
+logs/
+
+# IDE
+.idea/
+.vs/
+*.pfx
