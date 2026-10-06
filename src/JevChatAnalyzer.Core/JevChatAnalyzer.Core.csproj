@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>JevChatAnalyzer.Core</RootNamespace>
+    <Description>微信 4.x 数据库直读的 Jev 聊天判读核心库</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="JevChatAnalyzer.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\native\rwk\rwk.dll" Link="rwk.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
