@@ -1,3 +1,4 @@
+using JevChatAnalyzer.Core.Draft;
 using JevChatAnalyzer.Core.History;
 using JevChatAnalyzer.Core.Judge;
 using JevChatAnalyzer.Core.Messages;
@@ -101,14 +102,14 @@ public sealed class AnalysisPipeline
                                           !string.IsNullOrWhiteSpace(state.Settings.DraftEndpoint))
             {
                 // 盲起草兜底：无判读校准，不写回数据库
-                var options = new Draft.DraftOptions
+                var options = new DraftOptions
                 {
                     Endpoint = new Uri(state.Settings.DraftEndpoint),
                     ApiKey = Environment.GetEnvironmentVariable("LLM_API_KEY"),
                     Model = state.Settings.DraftModel,
                     CandidateCount = 3,
                 };
-                var client = new Draft.DraftClient(options);
+                var client = new DraftClient(options);
                 var (suggestions, summary) = await client.BlindDraftAsync(request, ct);
                 verdict = new JudgeVerdict
                 {

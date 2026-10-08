@@ -29,4 +29,18 @@ public sealed partial class MainWindow : Window
 
     /// <summary>托盘菜单「退出」直接调（App 转发）。</summary>
     public void RequestExit() => TrayExitRequested?.Invoke(this, new RoutedEventArgs());
+
+    private void Nav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    {
+        if (args.SelectedItem is not NavigationViewItem item)
+        {
+            return;
+        }
+        ContentFrame.Navigate(item.Tag?.ToString() switch
+        {
+            "history" => typeof(HistoryPage),
+            "settings" => typeof(SettingsPage),
+            _ => typeof(AnalyzePage),
+        });
+    }
 }

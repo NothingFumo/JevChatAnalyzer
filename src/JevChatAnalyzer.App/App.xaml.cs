@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using H.NotifyIcon;
+using Microsoft.UI.Xaml.Controls;
 using JevChatAnalyzer.App.Services;
 using JevChatAnalyzer.Core.Judge.NlayaJudge;
 
@@ -64,7 +65,26 @@ public partial class App : Application
 
         // 托盘：双击图标显示主窗口；关闭窗口 = 最小化到托盘（不退出，监听/自动写回继续）
         _tray = (TaskbarIcon)Resources["TrayIcon"];
-        _tray.IconLeftDoubleClick += (_, _) => ShowMainWindow();
+        // H.NotifyIcon 的 WinRT 事件默认禁用（Win10 兼容），官方推荐 Command 方式
+        var doubleClickCommand = new Microsoft.UI.Xaml.Input.XamlUICommand();
+        doubleClickCommand.ExecuteRequested += (_, _) => ShowMainWindow();
+        _tray.DoubleClickCommand = doubleClickCommand;
+        // Application XAML 不允许挂事件，托盘菜单在代码里接线
+        if (_tray.ContextFlyout is MenuFlyout flyout)
+        {
+            foreach (var item in flyout.Items.OfType<MenuFlyoutItem>())
+            {
+                switch (item.Name)
+                {
+                    case "TrayShowItem":
+                        item.Click += TrayShow_Click;
+                        break;
+                    case "TrayExitItem":
+                        item.Click += TrayExit_Click;
+                        break;
+                }
+            }
+        }
         if (MainAppWindow is MainWindow main)
         {
             main.TrayExitRequested += (_, _) => TrayExit_Click(this, new RoutedEventArgs());
