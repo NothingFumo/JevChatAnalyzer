@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using H.NotifyIcon;
 using JevChatAnalyzer.App.Services;
 using JevChatAnalyzer.Core.Judge.NlayaJudge;
 
@@ -7,6 +8,9 @@ namespace JevChatAnalyzer.App;
 public partial class App : Application
 {
     public static Window? MainAppWindow { get; private set; }
+
+    private static Mutex? _singleInstanceMutex;
+    private TaskbarIcon? _tray;
 
     public App()
     {
@@ -33,6 +37,14 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        // 单实例：已有实例在运行时直接退出（托盘里找它）
+        _singleInstanceMutex = new Mutex(initiallyOwned: true, @"Local\JevChatAnalyzer.SingleInstance", out var createdNew);
+        if (!createdNew)
+        {
+            Exit();
+            return;
+        }
+
         // 进程内 laya 引擎：模型就绪时注册为判读后端（HTTP 后端永远保留为兜底）
         var state = AppState.Instance;
         var nlaya = new NlayaBackend(string.IsNullOrWhiteSpace(state.Settings.NlayaModelDir)
@@ -49,5 +61,36 @@ public partial class App : Application
 
         MainAppWindow = new MainWindow();
         MainAppWindow.Activate();
+
+        // 托盘：双击图标显示主窗口；关闭窗口 = 最小化到托盘（不退出，监听/自动写回继续）
+        _tray = (TaskbarIcon)Resources["TrayIcon"];
+        _tray.IconLeftDoubleClick += (_, _) => ShowMainWindow();
+        if (MainAppWindow is MainWindow main)
+        {
+            main.TrayExitRequested += (_, _) => TrayExit_Click(this, new RoutedEventArgs());
+        }
+    }
+
+    public void ShowMainWindow()
+    {
+        MainAppWindow?.AppWindow.Show();
+        MainAppWindow?.Activate();
+    }
+
+    private void TrayShow_Click(object sender, RoutedEventArgs e) => ShowMainWindow();
+
+    private void TrayExit_Click(object sender, RoutedEventArgs e)
+    {
+        // 正式退出：先停监听/监视器，再释放托盘
+        try
+        {
+            AppState.Instance.CloseWeChatData();
+        }
+        catch
+        {
+        }
+        _tray?.Dispose();
+        _singleInstanceMutex?.ReleaseMutex();
+        Exit();
     }
 }

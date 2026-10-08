@@ -1,12 +1,24 @@
 <Application
     x:Class="JevChatAnalyzer.App.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:tb="using:H.NotifyIcon">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
+            <tb:TaskbarIcon x:Key="TrayIcon"
+                            ToolTipText="JevChatAnalyzer"
+                            IconSource="assets/app.ico">
+                <tb:TaskbarIcon.ContextFlyout>
+                    <MenuFlyout AreOpenCloseAnimationsEnabled="False">
+                        <MenuFlyoutItem Text="显示主窗口" Click="TrayShow_Click"/>
+                        <MenuFlyoutSeparator/>
+                        <MenuFlyoutItem Text="退出" Click="TrayExit_Click"/>
+                    </MenuFlyout>
+                </tb:TaskbarIcon.ContextFlyout>
+            </tb:TaskbarIcon>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
