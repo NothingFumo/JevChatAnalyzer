@@ -13,6 +13,8 @@
     <EnableMsixTooling Condition="'$(PackAsMsix)' == 'true'">true</EnableMsixTooling>
     <WindowsPackageType Condition="'$(PackAsMsix)' != 'true'">None</WindowsPackageType>
     <WindowsPackageType Condition="'$(PackAsMsix)' == 'true'">MSIX</WindowsPackageType>
+    <!-- WinAppSDK 运行时自包含：免安装运行时组件，双击即用 -->
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>JevChatAnalyzer</AssemblyName>
