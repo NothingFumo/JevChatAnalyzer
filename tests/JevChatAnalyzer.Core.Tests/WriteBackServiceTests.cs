@@ -40,7 +40,7 @@ public class WriteBackServiceTests : IDisposable
     [Fact]
     public void BuildQuoteXml_包含判读摘要与refermsg()
     {
-        var xml = WriteBackService.BuildQuoteXml(SampleVerdict(), "征询意见，急迫度 1.2/3", SampleFocus, "456789@chatroom");
+        var xml = WriteBackService.BuildQuoteXml(SampleVerdict(), "征询意见，急迫度 1.2/3", SampleFocus, "456789@chatroom", "wxid_me");
 
         Assert.Contains("<type>57</type>", xml);
         Assert.Contains("<svrid>743043483022253863</svrid>", xml);
@@ -55,7 +55,7 @@ public class WriteBackServiceTests : IDisposable
     public void BuildQuoteXml_单引号转义()
     {
         var verdict = SampleVerdict() with { Summary = "对方说'不干了'" };
-        var xml = WriteBackService.BuildQuoteXml(verdict, "对方说'不干了'", SampleFocus, "456789@chatroom");
+        var xml = WriteBackService.BuildQuoteXml(verdict, "对方说'不干了'", SampleFocus, "456789@chatroom", "wxid_me");
         // 单引号转义后 XML 仍可解析，且不含裸引号造成的结构破坏
         var doc = System.Xml.Linq.XDocument.Parse(xml);
         Assert.Contains("不干了", xml);
@@ -65,7 +65,7 @@ public class WriteBackServiceTests : IDisposable
     public void BuildQuoteXml_超长摘要截断()
     {
         var longText = new string('长', 2000);
-        var xml = WriteBackService.BuildQuoteXml(SampleVerdict(), longText, SampleFocus, "456789@chatroom");
+        var xml = WriteBackService.BuildQuoteXml(SampleVerdict(), longText, SampleFocus, "456789@chatroom", "wxid_me");
         Assert.DoesNotContain(longText, xml); // 被截断
         Assert.Contains("…", xml);
     }
@@ -103,11 +103,42 @@ public class WriteBackServiceTests : IDisposable
     [Fact]
     public void BuildQuoteXml_引用块挂对方消息()
     {
-        var xml = WriteBackService.BuildQuoteXml(SampleVerdict(), "摘要", SampleFocus, "456789@chatroom");
+        var xml = WriteBackService.BuildQuoteXml(SampleVerdict(), "摘要", SampleFocus, "456789@chatroom", "wxid_me");
 
         Assert.Contains("<chatusr>wxid_bob</chatusr>", xml);
         Assert.Contains("<displayname>小明</displayname>", xml);
         Assert.Contains("<fromusr>456789@chatroom</fromusr>", xml);
+    }
+
+    [Fact]
+    public void BuildQuoteXml_对齐真实模板结构()
+    {
+        var focus = SampleFocus with
+        {
+            MsgSource = "<msgsource><sequence_id>123</sequence_id></msgsource>",
+        };
+        var xml = WriteBackService.BuildQuoteXml(SampleVerdict(), "摘要", focus, "456789@chatroom", "wxid_me");
+
+        // 外层 msg：fromusername = 我
+        Assert.Contains("<fromusername>wxid_me</fromusername>", xml);
+        Assert.Contains("<scene>0</scene>", xml);
+        Assert.Contains("<appinfo>", xml);
+        // appmsg 全字段模板
+        Assert.Contains("<contentattr>0</contentattr>", xml);
+        Assert.Contains("<showtype>0</showtype>", xml);
+        Assert.Contains("<totllen>0</totllen>", xml);
+        // refermsg 带 msgsource（被引用消息原始 source，转义）
+        Assert.Contains("<msgsource>&lt;msgsource&gt;", xml);
+        // 可解析
+        System.Xml.Linq.XDocument.Parse(xml);
+    }
+
+    [Fact]
+    public void BuildQuoteXml_无MsgSource时输出空节点()
+    {
+        var xml = WriteBackService.BuildQuoteXml(SampleVerdict(), "摘要", SampleFocus, "456789@chatroom", "wxid_me");
+        Assert.Contains("<msgsource></msgsource>", xml);
+        System.Xml.Linq.XDocument.Parse(xml);
     }
 
     [Fact]

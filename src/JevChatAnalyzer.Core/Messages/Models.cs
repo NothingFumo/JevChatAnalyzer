@@ -86,6 +86,9 @@ public sealed record ChatMessage
     /// <summary>原始内容：文本即正文，appmsg 为 XML，非文本可能为空。</summary>
     public string Content { get; init; } = "";
 
+    /// <summary>消息来源元数据（source 列，可能 zstd 压缩存储；写回引用消息时填入 refermsg.msgsource）。</summary>
+    public string MsgSource { get; init; } = "";
+
     /// <summary>展示文本（解析后的正文或占位符，如 [图片]）。</summary>
     public string DisplayText { get; init; } = "";
 

@@ -277,7 +277,7 @@ public sealed class ChatStore : IDisposable
             {
                 rows = db.Query($"""
                         SELECT local_id, server_id, local_type, sort_seq, real_sender_id,
-                               create_time, message_content, compress_content
+                               create_time, message_content, compress_content, source
                         FROM "{table}"{where} ORDER BY sort_seq DESC LIMIT {limit}
                         """);
             }
@@ -291,7 +291,9 @@ public sealed class ChatStore : IDisposable
                 var localType = row.Int("local_type");
                 var senderId = row.Int("real_sender_id");
                 var senderWxId = NormalizeSender(name2Id.GetValueOrDefault(senderId), senderId);
-                var content = row.Text("message_content") ?? "";
+                // message_content/source 在新版 WCDB 可能是 zstd 压缩存储（按 BLOB 读 + 魔数检测）
+                var content = DecodeTextColumn(row, "message_content");
+                var msgSource = DecodeTextColumn(row, "source");
                 var compressed = row.Blob("compress_content");
                 if (content.Length == 0 && compressed is { Length: > 0 })
                 {
@@ -328,6 +330,7 @@ public sealed class ChatStore : IDisposable
                     SortSeq = sortSeq,
                     CreateTime = createTime,
                     Content = content,
+                    MsgSource = msgSource,
                     DisplayText = decoded.DisplayText,
                     Quote = quote,
                     Location = new MessageLocation(shardPath, table, row.Int("local_id")),
@@ -360,6 +363,30 @@ public sealed class ChatStore : IDisposable
     /// <summary>Name2Id 空值/缺失时回退 rowid 标记。</summary>
     private static string NormalizeSender(string? userName, long rowid) =>
         string.IsNullOrWhiteSpace(userName) ? $"rowid:{rowid}" : userName!;
+
+    /// <summary>
+    /// 解码可能被 WCDB zstd 压缩的文本列：按 BLOB 读取，`28 B5 2F FD` 魔数先解压；
+    /// 微信还可能在帧前加 1 字节版本前缀，TryDecompress 内已容错。
+    /// </summary>
+    private static string DecodeTextColumn(SqlCipherNative.Row row, string column)
+    {
+        var blob = row.Blob(column);
+        if (blob is not { Length: > 0 })
+        {
+            return "";
+        }
+        // zstd 帧魔数 0x28 0xB5 0x2F 0xFD（或带 1 字节前缀时魔数在 [1..5)）
+        var isZstd = blob.Length >= 4 && blob[0] == 0x28 && blob[1] == 0xB5;
+        if (!isZstd && blob.Length >= 5)
+        {
+            isZstd = blob[1] == 0x28 && blob[2] == 0xB5;
+        }
+        if (isZstd)
+        {
+            return ContentDecoder.TryDecompress(blob) ?? "";
+        }
+        return System.Text.Encoding.UTF8.GetString(blob);
+    }
 
     private static bool IsRowidFallback(string senderWxId) =>
         senderWxId.StartsWith("rowid:", StringComparison.Ordinal);

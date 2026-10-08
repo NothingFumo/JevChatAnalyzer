@@ -1,4 +1,3 @@
-using System.Xml.Linq;
 using JevChatAnalyzer.Core.Messages;
 using Xunit;
 
@@ -115,6 +114,42 @@ public class ContentDecoderTests
         var decoded = ContentDecoder.Decode(49, "<不是xml的垃圾", ResolveName);
         Assert.NotEmpty(decoded.DisplayText);
         Assert.Null(decoded.Quote);
+    }
+
+    [Fact]
+    public void Decode_真实引用消息样本_外层msg与发送者前缀()
+    {
+        // 2026-10-08 群聊 44332855279@chatroom 真实样本（local_id=50041，zstd 解压后）：
+        // message_content = 发送者前缀行 + 完整外层 msg XML
+        const string raw = """
+            wxid_9kdqxb1ohd3521:
+            <?xml version="1.0"?>
+            <msg>
+            	<appmsg appid="" sdkver="0">
+            		<title>好嘟好嘟 哈哈哈~</title>
+            		<type>57</type>
+            		<refermsg>
+            			<content>嫁给我</content>
+            			<createtime>1791472237</createtime>
+            			<displayname>雪婧衣</displayname>
+            			<fromusr>44332855279@chatroom</fromusr>
+            			<svrid>6433551728542999001</svrid>
+            			<type>1</type>
+            			<chatusr>wxid_rd5wa9yeow9021</chatusr>
+            		</refermsg>
+            	</appmsg>
+            	<fromusername>wxid_9kdqxb1ohd3521</fromusername>
+            	<scene>0</scene>
+            </msg>
+            """;
+        var (content, prefixSender) = ChatStore.StripSenderPrefix(raw);
+        Assert.Equal("wxid_9kdqxb1ohd3521", prefixSender);
+
+        var decoded = ContentDecoder.Decode(244813135921, content, id => id);
+        Assert.Equal("好嘟好嘟 哈哈哈~", decoded.DisplayText);
+        Assert.Equal("雪婧衣", decoded.Quote!.FromDisplayName);
+        Assert.Equal("嫁给我", decoded.Quote.Content);
+        Assert.Equal(6433551728542999001L, decoded.Quote.RefServerId);
     }
 
     [Fact]

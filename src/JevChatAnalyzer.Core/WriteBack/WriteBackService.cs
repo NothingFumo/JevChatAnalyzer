@@ -244,7 +244,7 @@ public sealed class WriteBackService
         File.Copy(dbShardPath, backupPath, overwrite: true);
         var sha = Sha256Hex(File.ReadAllBytes(backupPath));
 
-        var content = BuildQuoteXml(verdict, quoteText, focusMessage, sessionId);
+        var content = BuildQuoteXml(verdict, quoteText, focusMessage, sessionId, wxId);
         var inserted = new List<long>();
         using (var db = SqlCipherNative.OpenReadWrite(dbShardPath, dbKeyHex))
         {
@@ -381,34 +381,71 @@ public sealed class WriteBackService
     }
 
     /// <summary>
-    /// 构造 appmsg type=57 引用消息 XML：正文为判读摘要，refermsg 指向「对方发送的被分析消息」
-    /// （chatusr/displayname 为对方，微信里呈现为「我引用了对方的话 + 判读结论」）。
+    /// 构造引用消息 XML（模板对齐真实样本）：
+    /// 外层 msg 含 fromusername/scene/appinfo；appmsg 为微信全字段形态；
+    /// refermsg 的 chatusr/displayname 为「对方」（被引用方），msgsource 带被引用消息原始 source。
     /// </summary>
-    internal static string BuildQuoteXml(JudgeVerdict verdict, string quoteText, ChatMessage focus, string sessionId)
+    internal static string BuildQuoteXml(JudgeVerdict verdict, string quoteText, ChatMessage focus,
+        string sessionId, string myWxId)
     {
-        var summary = Esc(quoteText.Length > 800 ? quoteText[..800] + "…" : quoteText);
-        var referContent = Esc(focus.DisplayText.Length > 500 ? focus.DisplayText[..500] + "…" : focus.DisplayText);
+        var summary = XmlEsc(quoteText.Length > 800 ? quoteText[..800] + "…" : quoteText);
+        var referContent = XmlEsc(focus.DisplayText.Length > 500 ? focus.DisplayText[..500] + "…" : focus.DisplayText);
         var svrid = focus.ServerId ?? 0;
         var referTime = focus.CreateTime.ToUnixTimeSeconds();
+        var msgSource = string.IsNullOrWhiteSpace(focus.MsgSource) ? "" : XmlEsc(focus.MsgSource);
         return $"""
             <?xml version="1.0"?>
             <msg>
-                <appmsg appid="" sdkver="0">
-                    <title>{summary}</title>
-                    <des />
-                    <type>57</type>
-                    <url />
-                    <appattach><totlen>0</totlen><emoticonmd5></emoticonmd5><fileext></fileext></appattach>
-                    <refermsg>
-                        <type>1</type>
-                        <svrid>{svrid}</svrid>
-                        <fromusr>{Esc(sessionId)}</fromusr>
-                        <chatusr>{Esc(focus.SenderWxId)}</chatusr>
-                        <displayname>{Esc(focus.SenderDisplayName)}</displayname>
-                        <content>{referContent}</content>
-                        <createtime>{referTime}</createtime>
-                    </refermsg>
-                </appmsg>
+            	<appmsg appid="" sdkver="0">
+            		<title>{summary}</title>
+            		<des />
+            		<action />
+            		<type>57</type>
+            		<showtype>0</showtype>
+            		<soundtype>0</soundtype>
+            		<mediatagname />
+            		<messageext />
+            		<messageaction />
+            		<content />
+            		<contentattr>0</contentattr>
+            		<url />
+            		<lowurl />
+            		<dataurl />
+            		<lowdataurl />
+            		<songalbumurl />
+            		<songlyric />
+            		<template_id />
+            		<appattach>
+            			<totllen>0</totllen>
+            			<attachid />
+            			<emoticonmd5 />
+            			<fileext />
+            			<aeskey />
+            		</appattach>
+            		<extinfo />
+            		<sourceusername />
+            		<sourcedisplayname />
+            		<thumburl />
+            		<md5 />
+            		<statextstr />
+            		<refermsg>
+            			<content>{referContent}</content>
+            			<createtime>{referTime}</createtime>
+            			<displayname>{XmlEsc(focus.SenderDisplayName)}</displayname>
+            			<fromusr>{XmlEsc(sessionId)}</fromusr>
+            			<svrid>{svrid}</svrid>
+            			<msgsource>{msgSource}</msgsource>
+            			<type>1</type>
+            			<chatusr>{XmlEsc(focus.SenderWxId)}</chatusr>
+            		</refermsg>
+            	</appmsg>
+            	<fromusername>{XmlEsc(myWxId)}</fromusername>
+            	<scene>0</scene>
+            	<appinfo>
+            		<version>1</version>
+            		<appname></appname>
+            	</appinfo>
+            	<commenturl></commenturl>
             </msg>
             """;
     }
@@ -423,6 +460,10 @@ public sealed class WriteBackService
     }
 
     private static string Esc(string s) => s.Replace("'", "''");
+
+    /// <summary>XML 文本实体转义（&amp; 优先），用于嵌入 message_content 的字段值。</summary>
+    private static string XmlEsc(string s) =>
+        s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 
     private static string Sha256Hex(byte[] data) => Convert.ToHexStringLower(SHA256.HashData(data));
 }
