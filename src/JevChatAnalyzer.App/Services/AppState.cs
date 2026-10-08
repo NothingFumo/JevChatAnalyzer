@@ -140,6 +140,8 @@ public sealed class AppState
     private System.Threading.Timer? _autoWriteTimer;
     private int _autoWriteBusy;
     private string? _watchedDbKey;
+    /// <summary>落库失败后的退避：60 秒内不再尝试（如 WAL 未合并需用户启动微信合并）。</summary>
+    private DateTimeOffset _nextAutoWriteAttempt;
 
     /// <summary>自动写回完成（成功条目 / 失败原因）。线程池线程上触发。</summary>
     public event Action<IReadOnlyList<(Core.WriteBack.WriteBackEntry? Entry, string? Error)>>? AutoWriteCompleted;
@@ -168,17 +170,26 @@ public sealed class AppState
                 {
                     return; // 微信仍在运行，等下一轮
                 }
+                if (DateTimeOffset.UtcNow < _nextAutoWriteAttempt)
+                {
+                    return; // 上轮失败退避中
+                }
                 var key = _watchedDbKey ?? CurrentDbKey;
                 if (key is null)
                 {
                     return;
                 }
                 var results = WriteBack.FlushPending(key);
+                if (results.Any(r => r.Error is not null))
+                {
+                    _nextAutoWriteAttempt = DateTimeOffset.UtcNow.AddSeconds(60);
+                }
                 AutoWriteCompleted?.Invoke(results);
             }
             catch
             {
-                // 监视循环内的异常不外抛，下一轮重试
+                // 监视循环内的异常不外抛，退避后重试
+                _nextAutoWriteAttempt = DateTimeOffset.UtcNow.AddSeconds(60);
             }
             finally
             {
