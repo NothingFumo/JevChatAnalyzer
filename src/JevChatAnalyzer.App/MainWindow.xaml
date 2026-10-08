@@ -1,0 +1,19 @@
+<Window
+    x:Class="JevChatAnalyzer.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="JevChatAnalyzer">
+    <Grid>
+        <NavigationView x:Name="Nav"
+                        IsBackButtonVisible="Collapsed"
+                        PaneDisplayMode="LeftCompact"
+                        SelectionChanged="Nav_SelectionChanged">
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="会话判读" Tag="chat" Icon="Comment"/>
+                <NavigationViewItem Content="判读历史" Tag="history" Icon="Clock"/>
+                <NavigationViewItem Content="设置" Tag="settings" Icon="Setting"/>
+            </NavigationView.MenuItems>
+            <Frame x:Name="ContentFrame" />
+        </NavigationView>
+    </Grid>
+</Window>
