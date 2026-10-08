@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 
+using JevChatAnalyzer.Core.Net;
 using JevChatAnalyzer.Core.Voice;
 
 namespace JevChatAnalyzer.Core.Judge.NlayaJudge;
@@ -83,15 +84,14 @@ public static class NlayaModelDownloader
             }
             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
 
-            Exception? lastError = null;
+            var errors = new List<string>();
             foreach (var baseUrl in bases)
             {
                 try
                 {
                     var url = $"{baseUrl}/{RepoId}/resolve/main/{rel}";
-                    await DownloadFileAsync(url, dest, ct, progress);
+                    await HttpDownload.DownloadAsync(url, dest, ct, progress);
                     downloaded.Add(rel);
-                    lastError = null;
                     break;
                 }
                 catch (OperationCanceledException)
@@ -100,14 +100,14 @@ public static class NlayaModelDownloader
                 }
                 catch (Exception e)
                 {
-                    lastError = e; // 401/403/网络中断 → 换下一个源
+                    errors.Add($"{new Uri(baseUrl).Host}: {e.Message}"); // 401/403/网络中断 → 换下一源
                 }
             }
-            if (lastError is not null)
+            if (downloaded.Count == 0 || errors.Count == bases.Count)
             {
                 throw new InvalidOperationException(
-                    $"下载 {rel} 失败（已尝试 {string.Join("、", bases.Select(b => new Uri(b).Host))}）：{lastError.Message}",
-                    lastError);
+                    $"下载 {rel} 失败（已尝试 {string.Join("、", bases.Select(b => new Uri(b).Host))}）：\n" +
+                    string.Join("\n", errors));
             }
         }
         return new NlayaModelResult(root, downloaded);
@@ -123,30 +123,4 @@ public static class NlayaModelDownloader
         }
     }
 
-    private static async Task DownloadFileAsync(string url, string destPath, CancellationToken ct, IProgress<DownloadProgress>? progress)
-    {
-        var tmp = destPath + ".part";
-        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(60) };
-        using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
-        response.EnsureSuccessStatusCode();
-        var total = response.Content.Headers.ContentLength;
-        await using var src = await response.Content.ReadAsStreamAsync(ct);
-        await using var dst = File.Create(tmp);
-        var buffer = new byte[1 << 18];
-        long received = 0;
-        var lastReport = DateTimeOffset.Now;
-        int read;
-        while ((read = await src.ReadAsync(buffer, ct)) > 0)
-        {
-            await dst.WriteAsync(buffer.AsMemory(0, read), ct);
-            received += read;
-            if (progress is not null && (DateTimeOffset.Now - lastReport).TotalMilliseconds > 300)
-            {
-                progress.Report(new DownloadProgress(Path.GetFileName(destPath), received, total));
-                lastReport = DateTimeOffset.Now;
-            }
-        }
-        progress?.Report(new DownloadProgress(Path.GetFileName(destPath), received, total));
-        File.Move(tmp, destPath, overwrite: true);
-    }
 }

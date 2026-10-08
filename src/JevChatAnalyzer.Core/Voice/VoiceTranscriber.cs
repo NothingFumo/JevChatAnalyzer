@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using JevChatAnalyzer.Core.Net;
 using SherpaOnnx;
 
 namespace JevChatAnalyzer.Core.Voice;
@@ -80,61 +81,32 @@ public sealed class VoiceTranscriber : IDisposable
             {
                 continue;
             }
-            Exception? lastError = null;
+            var errors = new List<string>();
             foreach (var source in sources)
             {
                 try
                 {
-                    await DownloadToAsync(source, dest, ct, progress);
-                    lastError = null;
+                    await HttpDownload.DownloadAsync(source, dest, ct, progress);
+                    errors.Clear();
                     break;
                 }
                 catch (OperationCanceledException)
                 {
                     throw;
                 }
-                catch (Exception e) when (!ct.IsCancellationRequested)
+                catch (Exception e)
                 {
-                    lastError = e; // 401/403/网络失败 → 换下一个源
+                    errors.Add($"{new Uri(source).Host}: {e.Message}"); // 401/403/网络失败 → 换下一源
                 }
             }
-            if (lastError is not null)
+            if (errors.Count == sources.Length)
             {
                 throw new InvalidOperationException(
-                    $"下载 {target} 失败（已尝试 modelscope、huggingface、hf-mirror）：{lastError.Message}",
-                    lastError);
+                    $"下载 {target} 失败（已尝试 modelscope、huggingface、hf-mirror）：\n" +
+                    string.Join("\n", errors));
             }
         }
     }
-
-    private static async Task DownloadToAsync(string url, string destPath, CancellationToken ct, IProgress<DownloadProgress>? progress)
-    {
-        var tmp = destPath + ".part";
-        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
-        using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
-        response.EnsureSuccessStatusCode();
-        var total = response.Content.Headers.ContentLength;
-        await using var src = await response.Content.ReadAsStreamAsync(ct);
-        await using var dst = File.Create(tmp);
-        var buffer = new byte[1 << 16];
-        long received = 0;
-        int read;
-        var lastReport = StopwatchStart();
-        while ((read = await src.ReadAsync(buffer, ct)) > 0)
-        {
-            await dst.WriteAsync(buffer.AsMemory(0, read), ct);
-            received += read;
-            if (progress is not null && (DateTimeOffset.Now - lastReport).TotalMilliseconds > 200)
-            {
-                progress.Report(new DownloadProgress(Path.GetFileName(destPath), received, total));
-                lastReport = DateTimeOffset.Now;
-            }
-        }
-        progress?.Report(new DownloadProgress(Path.GetFileName(destPath), received, total));
-        File.Move(tmp, destPath, overwrite: true);
-    }
-
-    private static DateTimeOffset StopwatchStart() => DateTimeOffset.Now;
 
     /// <summary>转写一条语音（silk BLOB）。缓存命中直接返回。</summary>
     public string Transcribe(byte[] silkData, string cacheKey)
