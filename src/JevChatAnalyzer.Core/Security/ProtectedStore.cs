@@ -15,6 +15,10 @@ public static class ProtectedStore
     public static string UnprotectString(string cipherBase64) =>
         Encoding.UTF8.GetString(Unprotect(cipherBase64));
 
+    /// <summary>任意字节的 DPAPI 保护（Base64 输出），用于文件密钥等非文本数据。</summary>
+    public static string ProtectBytes(byte[] plain) =>
+        Convert.ToBase64String(ProtectedData.Protect(plain, Entropy, DataProtectionScope.CurrentUser));
+
     public static byte[] Unprotect(string cipherBase64) =>
         ProtectedData.Unprotect(Convert.FromBase64String(cipherBase64), Entropy, DataProtectionScope.CurrentUser);
 }
