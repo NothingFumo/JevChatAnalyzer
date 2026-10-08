@@ -226,6 +226,6 @@ public sealed class AppState
             {
                 Interlocked.Exchange(ref _autoWriteBusy, 0);
             }
-        }, null, dueTime: 2000, period: 2000);
+        }, null, dueTime: 1500, period: 2000);
     }
 }

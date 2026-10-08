@@ -169,7 +169,7 @@ public sealed partial class AnalyzePage : Page
                 return;
             }
             SetStatus(outcome.Enqueued
-                ? "判读完成，已加入待写队列——微信完全退出后将自动写入为引用消息（可随时撤销/还原）。"
+                ? "判读完成——正在实时写入微信数据库（挂对方这条消息；若会话里暂未显示，切换/重开会话即可；写入失败会自动排队重试）。"
                 : "判读完成（自动写回已在设置中关闭）。", InfoBarSeverity.Success);
         }
         catch (Exception ex)

@@ -168,7 +168,7 @@ public sealed class WriteBackService
             try
             {
                 var entry = WriteQuoteMessage(p.ShardPath, p.TableName, dbKeyHex,
-                    p.WxId, p.SessionId, p.FocusMessage, p.Verdict, p.QuoteText);
+                    p.WxId, p.SessionId, p.FocusMessage, p.Verdict, p.QuoteText, allowLive: true);
                 results.Add((entry, null));
             }
             catch (Exception e)
@@ -215,33 +215,38 @@ public sealed class WriteBackService
 
     /// <summary>
     /// 把判读结论写回为一条引用消息（引用「对方发送的被分析消息」）。
-    /// 返回台账条目。安全链：微信退出检查 → 整库备份 → 显式 17 列 INSERT。
+    /// 返回台账条目。安全链：整库备份（共享读，微信运行中也可备份）→ 显式 17 列 INSERT。
+    /// allowLive=true（实时直写）：跳过微信退出与 WAL 检查，经第二 SQLite 连接直写
+    /// （SQLite 多进程并发安全；微信界面需切换/重开会话刷新）。失败由调用方回退排队。
  /// 仅接受对方发送的消息（IsMine=false）
     /// </summary>
     public WriteBackEntry WriteQuoteMessage(
         string dbShardPath, string tableName, string dbKeyHex,
         string wxId, string sessionId, ChatMessage focusMessage, JudgeVerdict verdict,
-        string quoteText)
+        string quoteText, bool allowLive = true)
     {
         if (focusMessage.IsMine)
         {
             throw new WriteBackException("只能对「对方发送的消息」写回引用（本软件的分析对象）。");
         }
-        if (!IsWeChatClosed())
+        if (!allowLive)
         {
-            throw new WriteBackException("微信正在运行。为避免写入冲突与数据不一致，请先完全退出微信再执行写回。");
-        }
-        if (File.Exists(dbShardPath + "-wal") && new FileInfo(dbShardPath + "-wal").Length > 0)
-        {
-            throw new WriteBackException(
-                "目标数据库存在未合并的 WAL 日志。请先启动微信并正常退出一次（让微信自行合并日志），再执行写回。");
+            if (!IsWeChatClosed())
+            {
+                throw new WriteBackException("微信正在运行。请先完全退出微信再执行写回。");
+            }
+            if (File.Exists(dbShardPath + "-wal") && new FileInfo(dbShardPath + "-wal").Length > 0)
+            {
+                throw new WriteBackException(
+                    "目标数据库存在未合并的 WAL 日志。请先启动微信并正常退出一次（让微信自行合并日志），再执行写回。");
+            }
         }
 
         Directory.CreateDirectory(_backupDir);
         var id = $"{DateTimeOffset.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid().ToString("N")[..8]}";
         var backupName = $"{id}-{Path.GetFileName(dbShardPath)}.bak";
         var backupPath = Path.Combine(_backupDir, backupName);
-        File.Copy(dbShardPath, backupPath, overwrite: true);
+        CopyShared(dbShardPath, backupPath); // 微信运行时持有写句柄，备份必须共享读
         var sha = Sha256Hex(File.ReadAllBytes(backupPath));
 
         var content = BuildQuoteXml(verdict, quoteText, focusMessage, sessionId, wxId);
@@ -300,10 +305,8 @@ public sealed class WriteBackService
     /// <summary>撤销一次写回：按台账删除插入的行（不影响其后新消息）。返回删除的行数。</summary>
     public int Revoke(WriteBackEntry entry, string dbKeyHex)
     {
-        if (!IsWeChatClosed())
-        {
-            throw new WriteBackException("微信正在运行，请先完全退出微信再撤销。");
-        }
+        // 撤销 = 按行 DELETE，经第二连接直写，微信运行中同样可行（实时生效需重开会话）
+        // 注：整库还原（RestoreOriginal）仍要求微信退出——文件级替换不能与运行中的微信并发。
         var shardPath = FindShardPath(entry);
         if (shardPath is null)
         {
@@ -457,6 +460,15 @@ public sealed class WriteBackService
         RandomNumberGenerator.Fill(bytes);
         var v = BitConverter.ToInt64(bytes);
         return Math.Abs(v % 0x0000_FFFF_FFFF_FFFF);
+    }
+
+    /// <summary>共享读整文件拷贝（源被微信写句柄持有时 File.Copy 会失败，此法可行）。</summary>
+    private static void CopyShared(string src, string dst)
+    {
+        using var source = new FileStream(src, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete, 1 << 16);
+        using var target = new FileStream(dst, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16);
+        source.CopyTo(target);
     }
 
     private static string Esc(string s) => s.Replace("'", "''");
