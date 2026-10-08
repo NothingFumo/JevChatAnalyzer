@@ -6,6 +6,7 @@ using JevChatAnalyzer.Core.Messages;
 using JevChatAnalyzer.Core.WriteBack;
 using JevChatAnalyzer.App.Services;
 using JevChatAnalyzer.Core.Voice;
+using JevChatAnalyzer.Core.Draft;
 
 namespace JevChatAnalyzer.App.Views;
 
@@ -38,6 +39,10 @@ public sealed partial class ChatPage : Page
         RefreshButton.IsEnabled = !busy && AppState.Instance.Chat is not null;
         var hasFocus = !busy && _focusMessage is not null;
         JudgeButton.IsEnabled = hasFocus;
+        TranscribeButton.IsEnabled = hasFocus && _focusMessage.LocalType == ChatStore.TypeVoice
+                                     && AppState.Instance.Transcriber.IsModelReady
+                                     && AppState.Instance.CurrentAccountDir is not null;
+        DraftButton.IsEnabled = hasFocus && _lastVerdict is not null && AppState.Instance.Settings.DraftEnabled;
         WriteBackButton.IsEnabled = hasFocus && _lastVerdict is not null && AppState.Instance.Settings.WriteBackEnabled;
         RevokeButton.IsEnabled = !busy && _lastWriteBack is not null && _lastWriteBack.RevokedAt is null;
     }
@@ -136,6 +141,95 @@ public sealed partial class ChatPage : Page
             _focusMessage = row.Message;
         }
         SetBusy(false);
+    }
+
+    private async void TranscribeButton_Click(object sender, RoutedEventArgs e)
+    {
+        var state = AppState.Instance;
+        if (_focusMessage is null || state.CurrentAccountDir is null)
+        {
+            return;
+        }
+        SetBusy(true);
+        try
+        {
+            var silk = VoiceLocator.FindVoiceData(
+                state.CurrentAccountDir, state.CurrentDbKey!,
+                _focusMessage.ServerId, _focusMessage.SenderWxId,
+                _focusMessage.CreateTime.ToUnixTimeSeconds(), _focusMessage.LocalId);
+            if (silk is null)
+            {
+                SetStatus("媒体库中未找到该语音的数据。", InfoBarSeverity.Warning);
+                return;
+            }
+            var cacheKey = VoiceTranscriber.CacheKey(_focusMessage.ServerId,
+                _focusMessage.CreateTime.ToUnixTimeSeconds(), _focusMessage.LocalId);
+            var text = state.Transcriber.Transcribe(silk, cacheKey);
+            SetStatus($"转写完成：{text}", InfoBarSeverity.Success);
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"转写失败：{ex.Message}", InfoBarSeverity.Error);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private async void DraftButton_Click(object sender, RoutedEventArgs e)
+    {
+        var state = AppState.Instance;
+        if (_focusMessage is null || _currentSession is null || _lastVerdict is null)
+        {
+            return;
+        }
+        SetBusy(true);
+        try
+        {
+            var options = new DraftOptions
+            {
+                Endpoint = new Uri(state.Settings.DraftEndpoint),
+                ApiKey = Environment.GetEnvironmentVariable("LLM_API_KEY"),
+                Model = state.Settings.DraftModel,
+                CandidateCount = 3,
+            };
+            var client = new DraftClient(options);
+            var request = JudgeService.BuildRequest(
+                _messages, _focusMessage, _currentSession.DisplayName, _currentSession.Kind == SessionKind.Group);
+            var suggestions = await client.DraftAsync(request, _lastVerdict);
+
+            var dialog = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = "候选回复",
+                PrimaryButtonText = "关闭",
+            };
+            var panel = new StackPanel { Spacing = 8 };
+            foreach (var s in suggestions)
+            {
+                panel.Children.Add(new StackPanel { Spacing = 2 });
+                var item = (StackPanel)panel.Children[^1];
+                item.Children.Add(new TextBlock
+                {
+                    Text = $"[{s.Tone}]",
+                    FontSize = 12,
+                    Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                        Microsoft.UI.Colors.Gray),
+                });
+                item.Children.Add(new TextBlock { Text = s.Text, TextWrapping = TextWrapping.Wrap });
+            }
+            dialog.Content = new ScrollViewer { MaxHeight = 360, Content = panel };
+            await dialog.ShowAsync();
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"起草失败：{ex.Message}", InfoBarSeverity.Error);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
     }
 
     private async void JudgeButton_Click(object sender, RoutedEventArgs e)
