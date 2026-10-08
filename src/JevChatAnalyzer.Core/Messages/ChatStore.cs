@@ -226,8 +226,7 @@ public sealed class ChatStore : IDisposable
     }
 
     /// <summary>用 session.db / contact.db 的已知 username 计算 md5 反查表名。</summary>
-    private Dictionary<string, string> BuildSessionMd5Lookup()
-    {
+    private Dictionary<string, string> BuildSessionMd5Lookup()    {
         var candidates = new HashSet<string>(StringComparer.Ordinal);
         if (_sessionDb is not null)
         {
@@ -260,6 +259,84 @@ public sealed class ChatStore : IDisposable
         Convert.ToHexStringLower(MD5.HashData(Encoding.UTF8.GetBytes(s)));
 
     /// <summary>读取一个会话的全部消息（跨分片聚合、按 sort_seq 升序）。limit 为倒序截取条数。</summary>
+    /// <summary>
+    /// 会话增量查询（实时监听用）：返回该会话中 sort_seq 大于 lastSeen 的新消息（升序）。
+    /// 无新消息返回空列表。lastSeen 传 0 表示从最新一条开始基线（返回仅 1 条）。
+    /// </summary>
+    public IReadOnlyList<ChatMessage> ReadNewMessages(string sessionId, long lastSeen)
+    {
+        var table = $"Msg_{ComputeMd5Hex(sessionId)}";
+        if (!_tableToMd5.ContainsKey(table))
+        {
+            return [];
+        }
+        var found = new List<ChatMessage>();
+        foreach (var (shardPath, db) in _shards)
+        {
+            List<SqlCipherNative.Row> rows;
+            try
+            {
+                rows = db.Query($"""
+                        SELECT local_id, server_id, local_type, sort_seq, real_sender_id,
+                               create_time, message_content, compress_content, source
+                        FROM "{table}" WHERE sort_seq > {lastSeen} ORDER BY sort_seq
+                        """);
+            }
+            catch (SqliteNativeException)
+            {
+                continue;
+            }
+            var name2Id = _name2IdByShard[_shards.FindIndex(s => s.ShardPath == shardPath)];
+            foreach (var row in rows)
+            {
+                var localType = row.Int("local_type");
+                var senderId = row.Int("real_sender_id");
+                var senderWxId = NormalizeSender(name2Id.GetValueOrDefault(senderId), senderId);
+                var content = DecodeTextColumn(row, "message_content");
+                var compressed = row.Blob("compress_content");
+                if (content.Length == 0 && compressed is { Length: > 0 })
+                {
+                    content = ContentDecoder.TryDecompress(compressed) ?? "";
+                }
+                var (stripped, prefixSender) = StripSenderPrefix(content);
+                if (prefixSender is not null && IsRowidFallback(senderWxId))
+                {
+                    senderWxId = prefixSender;
+                }
+                content = stripped;
+                var sortSeq = row.Int("sort_seq");
+                var createTime = row.IntOrNull("create_time") is { } t && t > 0
+                    ? DateTimeOffset.FromUnixTimeSeconds(t)
+                    : DateTimeOffset.FromUnixTimeMilliseconds(sortSeq);
+                var isMine = senderWxId == MyWxId;
+                var decoded = ContentDecoder.Decode(localType, content, ResolveDisplayName);
+                var quote = decoded.Quote;
+                if (quote is not null && string.IsNullOrWhiteSpace(quote.FromDisplayName) && quote.FromWxId is not null)
+                {
+                    quote = quote with { FromDisplayName = ResolveDisplayName(quote.FromWxId) };
+                }
+                found.Add(new ChatMessage
+                {
+                    LocalId = row.Int("local_id"),
+                    ServerId = row.IntOrNull("server_id"),
+                    SenderWxId = senderWxId,
+                    SenderDisplayName = ResolveSenderName(sessionId, senderWxId, isMine),
+                    IsMine = isMine,
+                    LocalType = localType,
+                    AppMsgSubType = decoded.AppMsgSubType,
+                    SortSeq = sortSeq,
+                    CreateTime = createTime,
+                    Content = content,
+                    MsgSource = DecodeTextColumn(row, "source"),
+                    DisplayText = decoded.DisplayText,
+                    Quote = quote,
+                    Location = new MessageLocation(shardPath, table, row.Int("local_id")),
+                });
+            }
+        }
+        return found.OrderBy(m => m.SortSeq).ToList();
+    }
+
     public IReadOnlyList<ChatMessage> ReadSessionMessages(string sessionId, int limit = 500, long? beforeSeq = null)
     {
         var table = $"Msg_{ComputeMd5Hex(sessionId)}";

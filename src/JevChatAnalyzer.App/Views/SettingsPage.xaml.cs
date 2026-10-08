@@ -34,6 +34,10 @@ public sealed partial class SettingsPage : Page
         CloudSanitizeSwitch.IsOn = s.CloudSanitize;
         LayaServerBox.Text = s.LayaServerUrl;
         VoiceSwitch.IsOn = s.VoiceEnabled;
+        MonitorSwitch.IsOn = s.MonitorEnabled;
+        MonitorIntervalBox.Text = s.MonitorIntervalSeconds.ToString();
+        ContextTurnsBox.Text = s.ContextTurns.ToString();
+        MonitorSessionsBox.Text = s.MonitorSessions;
         WriteBackSwitch.IsOn = s.AutoWriteEnabled;
 
         var transcriber = AppState.Instance.Transcriber;
@@ -46,8 +50,8 @@ public sealed partial class SettingsPage : Page
     {
         // XAML 中首项 IsSelected="True" 会在解析期触发本事件，此时各分区元素尚未创建，
         // 必须判空（否则点开设置页直接闪退）
-        if (TabList is null || PaneKeys is null || PaneJudge is null || PaneModels is null ||
-            PaneVoice is null || PanePrivacy is null || PaneAbout is null)
+        if (TabList is null || PaneKeys is null || PaneJudge is null || PaneDialog is null ||
+            PaneModels is null || PaneVoice is null || PanePrivacy is null || PaneAbout is null)
         {
             return;
         }
@@ -57,6 +61,7 @@ public sealed partial class SettingsPage : Page
         }
         PaneKeys.Visibility = VisibleIf(item.Tag?.ToString() == "keys");
         PaneJudge.Visibility = VisibleIf(item.Tag?.ToString() == "judge");
+        PaneDialog.Visibility = VisibleIf(item.Tag?.ToString() == "dialog");
         PaneModels.Visibility = VisibleIf(item.Tag?.ToString() == "models");
         PaneVoice.Visibility = VisibleIf(item.Tag?.ToString() == "voice");
         PanePrivacy.Visibility = VisibleIf(item.Tag?.ToString() == "privacy");
@@ -219,6 +224,15 @@ public sealed partial class SettingsPage : Page
         s.CloudSanitize = CloudSanitizeSwitch.IsOn;
         s.LayaServerUrl = LayaServerBox.Text.Trim();
         s.VoiceEnabled = VoiceSwitch.IsOn;
+        s.MonitorEnabled = MonitorSwitch.IsOn;
+        s.MonitorIntervalSeconds = Math.Max(2, int.TryParse(MonitorIntervalBox.Text.Trim(), out var iv) ? iv : 5);
+        s.ContextTurns = Math.Clamp(int.TryParse(ContextTurnsBox.Text.Trim(), out var ctx) ? ctx : 20, 1, 200);
+        s.MonitorSessions = MonitorSessionsBox.Text.Trim();
+        // 监听配置热生效：重启监听（已打开数据时）
+        if (s.MonitorEnabled && AppState.Instance.Chat is not null)
+        {
+            AppState.Instance.StartMonitor();
+        }
         s.AutoWriteEnabled = WriteBackSwitch.IsOn;
         AppState.Instance.SaveSettings();
         SaveHint.Text = "已保存 " + DateTimeOffset.Now.ToString("HH:mm:ss");

@@ -33,6 +33,15 @@ public sealed class AppSettings
     /// <summary>上下文轮数。</summary>
     public int ContextTurns { get; set; } = 20;
 
+    /// <summary>实时监听：收到对方新消息立即触发分析（需先打开微信数据）。</summary>
+    public bool MonitorEnabled { get; set; } = true;
+
+    /// <summary>监听轮询间隔（秒，最小 2）。</summary>
+    public int MonitorIntervalSeconds { get; set; } = 5;
+
+    /// <summary>监听会话白名单：sessionId 列表（逗号/换行分隔；空 = 全部活跃会话）。</summary>
+    public string MonitorSessions { get; set; } = "";
+
     /// <summary>自动写回：判读对方消息后入队，微信退出后自动落库（本软件的核心动作，默认开）。</summary>
     public bool AutoWriteEnabled { get; set; } = true;
 

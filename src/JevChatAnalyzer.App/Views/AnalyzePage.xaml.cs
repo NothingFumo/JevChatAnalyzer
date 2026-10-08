@@ -1,50 +1,53 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using JevChatAnalyzer.Core.History;
 using JevChatAnalyzer.Core.Judge;
 using JevChatAnalyzer.Core.Messages;
 using JevChatAnalyzer.App.Services;
-using JevChatAnalyzer.Core.Voice;
 using JevChatAnalyzer.Core.Draft;
+using JevChatAnalyzer.Core.Voice;
 
 namespace JevChatAnalyzer.App.Views;
 
 /// <summary>
-/// 分析工作台：会话列表（仅名称与统计）→ 一键分析对方最新消息 → 判读卡片 → 自动写回队列。
-/// 不展示微信消息原文（消息时间线已移除）
+/// 分析工作台：会话列表（仅名称与统计）→ 一键分析 / 实时监听自动分析 → 判读卡片 → 自动写回队列。
+/// 不展示微信消息原文。手动分析与实时监听共用 AnalysisPipeline 单一路径。
 /// </summary>
 public sealed partial class AnalyzePage : Page
 {
     private IReadOnlyList<ChatSession> _sessions = [];
     private ChatSession? _currentSession;
-    private IReadOnlyList<ChatMessage> _recentMessages = [];
-    private ChatMessage? _focusMessage;
-    private JudgeVerdict? _lastVerdict;
+    private AnalysisOutcome? _lastOutcome;
 
     public AnalyzePage()
     {
         InitializeComponent();
-        // 自动写回完成回调：从后台线程切回 UI 线程展示结果
-        AppState.Instance.AutoWriteCompleted += results =>
+        var state = AppState.Instance;
+        // 共享管线：手动分析与实时监听的分析结果都汇到这里刷新卡片
+        state.Pipeline.Analyzed += outcome => DispatcherQueue.TryEnqueue(() => ShowOutcome(outcome));
+        state.AutoWriteCompleted += results => DispatcherQueue.TryEnqueue(() =>
         {
-            DispatcherQueue.TryEnqueue(() =>
+            var ok = results.Where(r => r.Error is null).ToList();
+            var failed = results.Where(r => r.Error is not null).ToList();
+            if (ok.Count > 0)
             {
-                var ok = results.Where(r => r.Error is null).ToList();
-                var failed = results.Where(r => r.Error is not null).ToList();
-                if (ok.Count > 0)
-                {
-                    SetStatus($"自动写回完成：{ok.Count} 条引用消息已写入微信数据库" +
-                              $"（{string.Join("、", ok.Select(r => r.Entry!.SessionId))}）。" +
-                              "启动微信即可看到；可随时「撤销最近写回」。", InfoBarSeverity.Success);
-                    RevokeButton.IsEnabled = true;
-                }
-                if (failed.Count > 0)
-                {
-                    SetStatus($"自动写回有 {failed.Count} 条失败（保留在队列中）：\n" +
-                              string.Join("\n", failed.Select(r => r.Error)), InfoBarSeverity.Warning);
-                }
-            });
-        };
+                SetStatus($"自动写回完成：{ok.Count} 条引用消息已写入微信数据库" +
+                          $"（{string.Join("、", ok.Select(r => r.Entry!.SessionId))}）。" +
+                          "启动微信即可看到；可随时「撤销最近写回」。", InfoBarSeverity.Success);
+                RevokeButton.IsEnabled = true;
+            }
+            if (failed.Count > 0)
+            {
+                SetStatus($"自动写回有 {failed.Count} 条失败（保留在队列中）：\n" +
+                          string.Join("\n", failed.Select(r => r.Error)), InfoBarSeverity.Warning);
+            }
+        });
+        state.MonitorStatusChanged += st => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (Status.IsOpen != true)
+            {
+                SetStatus(st.Message, InfoBarSeverity.Informational);
+            }
+        });
     }
 
     private void SetStatus(string message, InfoBarSeverity severity = InfoBarSeverity.Informational)
@@ -60,15 +63,26 @@ public sealed partial class AnalyzePage : Page
         OpenDataButton.IsEnabled = !busy;
         RefreshButton.IsEnabled = !busy && AppState.Instance.Chat is not null;
         AnalyzeButton.IsEnabled = !busy && _currentSession is not null && AppState.Instance.Chat is not null;
-        DraftButton.IsEnabled = !busy && _lastVerdict is not null && AppState.Instance.Settings.DraftEnabled;
+        DraftButton.IsEnabled = !busy && _lastOutcome is not null && AppState.Instance.Settings.DraftEnabled;
         RevokeButton.IsEnabled = !busy && AppState.Instance.WriteBack.ListEntries().Any(en => en.RevokedAt is null);
     }
 
-    private void ShowFocus(string focusText, string speaker)
+    private void ShowOutcome(AnalysisOutcome outcome)
     {
-        FocusInfo.Message = $"「{speaker}」：{focusText}";
+        _lastOutcome = outcome;
+        FocusInfo.Message = $"「{outcome.Focus.SenderDisplayName}」：{outcome.Focus.DisplayText}";
         FocusInfo.Severity = InfoBarSeverity.Informational;
         FocusInfo.IsOpen = true;
+
+        VerdictSummary.Text = outcome.Verdict.Summary;
+        VerdictAnswers.ItemsSource = outcome.Verdict.Answers
+            .Join(JudgeQuestions.Specs, a => a.Key, s => s.Id,
+                (a, s) => new VerdictAnswerRow(s.Instructions, a.Value.ToString()))
+            .ToList();
+        VerdictMeta.Text = $"{outcome.Verdict.Model} · {outcome.Verdict.JudgedAt:HH:mm:ss}" +
+                           (outcome.Enqueued ? " · 已入待写队列" : "");
+        VerdictPanel.Visibility = Visibility.Visible;
+        SetBusy(false);
     }
 
     private async void OpenDataButton_Click(object sender, RoutedEventArgs e)
@@ -126,56 +140,8 @@ public sealed partial class AnalyzePage : Page
         if (SessionList.SelectedItem is SessionRow row)
         {
             _currentSession = row.Session;
-            // 焦点在点「分析」时才计算，保持「分析最新」语义
         }
         SetBusy(false);
-    }
-
-    /// <summary>
-    /// 选择分析焦点：会话中「对方最新一条可分析消息」（有展示文本；
-    /// 语音消息在转写可用时先转写为文本）。找不到时返回 null 并提示。
-    /// </summary>
-    private async Task<ChatMessage?> PickFocusAsync(IReadOnlyList<ChatMessage> messages)
-    {
-        var state = AppState.Instance;
-        foreach (var m in messages.OrderByDescending(x => x.SortSeq))
-        {
-            if (m.IsMine || m.DisplayText.Length == 0)
-            {
-                continue;
-            }
-            if (m.LocalType == ChatStore.TypeVoice)
-            {
-                if (!state.Settings.VoiceEnabled || !state.Transcriber.IsModelReady ||
-                    state.CurrentAccountDir is null)
-                {
-                    continue; // 语音未启用转写则跳过，找更早的可分析消息
-                }
-                try
-                {
-                    var silk = VoiceLocator.FindVoiceData(state.CurrentAccountDir, state.CurrentDbKey!,
-                        m.ServerId, m.SenderWxId, m.CreateTime.ToUnixTimeSeconds(), m.LocalId);
-                    if (silk is null)
-                    {
-                        continue;
-                    }
-                    var cacheKey = VoiceTranscriber.CacheKey(m.ServerId,
-                        m.CreateTime.ToUnixTimeSeconds(), m.LocalId);
-                    var text = state.Transcriber.Transcribe(silk, cacheKey);
-                    if (text.Length == 0)
-                    {
-                        continue;
-                    }
-                    return m with { DisplayText = $"[语音] {text}" };
-                }
-                catch
-                {
-                    continue; // 单条转写失败不阻塞，尝试更早的消息
-                }
-            }
-            return m;
-        }
-        return await Task.FromResult<ChatMessage?>(null);
     }
 
     private async void AnalyzeButton_Click(object sender, RoutedEventArgs e)
@@ -186,60 +152,19 @@ public sealed partial class AnalyzePage : Page
             return;
         }
         SetBusy(true);
+        SetStatus($"正在分析 [{_currentSession.DisplayName}] …");
         try
         {
-            _recentMessages = state.Chat.ReadSessionMessages(_currentSession.SessionId,
-                limit: state.Settings.ContextTurns + 5);
-            var focus = await PickFocusAsync(_recentMessages);
-            if (focus is null)
+            var outcome = await state.Pipeline.AnalyzeAsync(state, _currentSession, enqueue: true);
+            if (outcome is null)
             {
                 SetStatus("该会话中没有找到可分析的对方消息（可能全是自己发言、系统消息，或语音未启用转写）。",
                     InfoBarSeverity.Warning);
                 return;
             }
-            _focusMessage = focus;
-            ShowFocus(focus.DisplayText, focus.SenderDisplayName);
-
-            var request = JudgeService.BuildRequest(
-                _recentMessages, focus, _currentSession.DisplayName, _currentSession.Kind == SessionKind.Group);
-            SetStatus($"正在通过 {state.Settings.JudgeBackend} 后端判读 …");
-            var verdict = await state.Judge.JudgeAsync(request);
-            _lastVerdict = verdict;
-
-            VerdictSummary.Text = verdict.Summary;
-            VerdictAnswers.ItemsSource = verdict.Answers
-                .Join(JudgeQuestions.Specs, a => a.Key, s => s.Id,
-                    (a, s) => new VerdictAnswerRow(s.Instructions, a.Value.ToString()))
-                .ToList();
-            VerdictMeta.Text = $"{verdict.Model} · {verdict.JudgedAt:HH:mm:ss}";
-            VerdictPanel.Visibility = Visibility.Visible;
-
-            state.History.Add(new HistoryRecord
-            {
-                Id = Guid.NewGuid().ToString("N"),
-                WxId = state.CurrentWxId ?? "",
-                SessionId = _currentSession.SessionId,
-                SessionTitle = _currentSession.DisplayName,
-                FocusText = focus.DisplayText,
-                MessageKey = VoiceTranscriber.CacheKey(focus.ServerId,
-                    focus.CreateTime.ToUnixTimeSeconds(), focus.LocalId),
-                Verdict = verdict,
-                CreatedAt = DateTimeOffset.Now,
-            });
-
-            // 自动写回：结论入待写队列，微信退出后由监视器落库
-            if (state.Settings.AutoWriteEnabled)
-            {
-                state.WriteBack.EnqueuePending(state.CurrentWxId!, _currentSession.SessionId,
-                    focus, verdict, quoteText: verdict.Summary);
-                state.EnsureAutoWriteWatch();
-                SetStatus("判读完成，已加入待写队列——微信完全退出后将自动写入为引用消息" +
-                          "（引用对方这条消息，可随时撤销/还原）。", InfoBarSeverity.Success);
-            }
-            else
-            {
-                SetStatus("判读完成（自动写回已在设置中关闭）。", InfoBarSeverity.Success);
-            }
+            SetStatus(outcome.Enqueued
+                ? "判读完成，已加入待写队列——微信完全退出后将自动写入为引用消息（可随时撤销/还原）。"
+                : "判读完成（自动写回已在设置中关闭）。", InfoBarSeverity.Success);
         }
         catch (Exception ex)
         {
@@ -254,7 +179,7 @@ public sealed partial class AnalyzePage : Page
     private async void DraftButton_Click(object sender, RoutedEventArgs e)
     {
         var state = AppState.Instance;
-        if (_focusMessage is null || _currentSession is null || _lastVerdict is null)
+        if (_lastOutcome is null || _currentSession is null)
         {
             return;
         }
@@ -269,9 +194,11 @@ public sealed partial class AnalyzePage : Page
                 CandidateCount = 3,
             };
             var client = new DraftClient(options);
+            var messages = state.Chat!.ReadSessionMessages(_currentSession.SessionId,
+                limit: state.Settings.ContextTurns + 5);
             var request = JudgeService.BuildRequest(
-                _recentMessages, _focusMessage, _currentSession.DisplayName, _currentSession.Kind == SessionKind.Group);
-            var suggestions = await client.DraftAsync(request, _lastVerdict);
+                messages, _lastOutcome.Focus, _currentSession.DisplayName, _currentSession.Kind == SessionKind.Group);
+            var suggestions = await client.DraftAsync(request, _lastOutcome.Verdict);
 
             var dialog = new ContentDialog
             {
@@ -308,7 +235,6 @@ public sealed partial class AnalyzePage : Page
     private async void RevokeButton_Click(object sender, RoutedEventArgs e)
     {
         var state = AppState.Instance;
-        // 撤销对象 = 台账中最近一条生效中的写回
         var entry = state.WriteBack.ListEntries().LastOrDefault(en => en.RevokedAt is null);
         if (entry is null)
         {
@@ -362,8 +288,6 @@ public sealed partial class AnalyzePage : Page
     }
 
     private void Status_Close(object sender, object e) => Status.IsOpen = false;
-
-    // —— 列表行视图模型 ——
 
     private sealed record SessionRow(ChatSession Session)
     {

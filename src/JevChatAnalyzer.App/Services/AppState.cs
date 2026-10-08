@@ -22,6 +22,12 @@ public sealed class AppState
 
     public JudgeService Judge { get; private set; } = new();
 
+    public AnalysisPipeline Pipeline { get; } = new();
+    public MessageMonitor? Monitor { get; private set; }
+
+    /// <summary>监听状态变化（UI 状态行）。线程池线程触发。</summary>
+    public event Action<MonitorStatus>? MonitorStatusChanged;
+
     /// <summary>当前打开的会话仓库（微信数据直读会话），null = 未打开。</summary>
     public ChatStore? Chat { get; private set; }
 
@@ -116,8 +122,10 @@ public sealed class AppState
         StatusChanged?.Invoke($"正在打开 {entry.WxId} 的消息库 …");
         Chat = ChatStore.Open(accountDir, entry.WxId, entry.DbKeyCipher);
         CurrentWxIdSet(entry.WxId, entry.DbKeyCipher, accountDir);
+        StartMonitor();
         var sessions = Chat.ListSessions(1);
-        return $"已打开 {entry.WxId}（{sessions.Count} 个活跃会话采样）";
+        return $"已打开 {entry.WxId}（{sessions.Count} 个活跃会话采样）" +
+               (Settings.MonitorEnabled ? "，实时监听已启动" : "");
     }
 
     private void CurrentWxIdSet(string wxId, string dbKey, string accountDir)
@@ -129,10 +137,25 @@ public sealed class AppState
     /// <summary>关闭当前微信数据会话（释放库句柄）。</summary>
     public void CloseWeChatData()
     {
+        Monitor?.Stop();
+        Monitor = null;
         Chat?.Dispose();
         Chat = null;
         CurrentDbKey = null;
         CurrentAccountDir = null;
+    }
+
+    /// <summary>启动/重启实时监听（打开微信数据后调用）。</summary>
+    public void StartMonitor()
+    {
+        if (!Settings.MonitorEnabled)
+        {
+            return;
+        }
+        Monitor?.Stop();
+        Monitor = new MessageMonitor(this, Pipeline);
+        Monitor.StatusChanged += st => MonitorStatusChanged?.Invoke(st);
+        Monitor.Start();
     }
 
     // ── 自动写回：判读入队 → 监视微信退出 → 自动落库 ──

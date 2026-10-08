@@ -17,6 +17,9 @@
             <ListViewItem Tag="judge">
                 <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE945;" FontSize="16"/><TextBlock Text="判读后端"/></StackPanel>
             </ListViewItem>
+            <ListViewItem Tag="dialog">
+                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE8BD;" FontSize="16"/><TextBlock Text="对话与监听"/></StackPanel>
+            </ListViewItem>
             <ListViewItem Tag="models">
                 <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE8D6;" FontSize="16"/><TextBlock Text="本地引擎模型"/></StackPanel>
             </ListViewItem>
@@ -79,6 +82,29 @@
                     </StackPanel>
                     <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Text="云端 API key 从环境变量 CLOUD_API_KEY 读取；连续 3 次失败自动熔断 30 秒并降级到备用后端。"/>
+                </StackPanel>
+
+                <!--  对话与监听  -->
+                <StackPanel x:Name="PaneDialog" Spacing="12" Visibility="Collapsed">
+                    <TextBlock FontSize="20" FontWeight="SemiBold">对话与监听</TextBlock>
+                    <ToggleSwitch x:Name="MonitorSwitch" OnContent="实时监听：收到对方新消息立即分析并入待写队列" OffContent="实时监听：关（仅在分析页手动触发）"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <StackPanel Spacing="4" Width="200">
+                            <TextBlock>监听轮询间隔（秒，最小 2）</TextBlock>
+                            <TextBox x:Name="MonitorIntervalBox"/>
+                        </StackPanel>
+                        <StackPanel Spacing="4" Width="200">
+                            <TextBlock>判读上下文条数</TextBlock>
+                            <TextBox x:Name="ContextTurnsBox"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock>监听会话白名单（sessionId，逗号或换行分隔；留空 = 全部活跃会话）</TextBlock>
+                        <TextBox x:Name="MonitorSessionsBox" AcceptsReturn="True" Height="80"
+                                 PlaceholderText="44332855279@chatroom&#x0A;wxid_xxxxxxxx"/>
+                    </StackPanel>
+                    <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="监听在「打开微信数据」后自动开始：轮询消息库为只读访问；发现对方新消息立即判读并把结论加入待写队列，微信退出后自动落库为引用消息。白名单留空时监听最近活跃的 50 个会话。"/>
                 </StackPanel>
 
                 <!--  本地引擎模型  -->
