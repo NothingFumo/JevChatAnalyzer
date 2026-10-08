@@ -15,12 +15,16 @@ namespace JevChatAnalyzer.App.Views;
 public sealed partial class AnalyzePage : Page
 {
     private IReadOnlyList<ChatSession> _sessions = [];
+    private List<SessionRow> _sessionRows = [];
     private ChatSession? _currentSession;
     private AnalysisOutcome? _lastOutcome;
 
     public AnalyzePage()
     {
         InitializeComponent();
+        var turns = AppState.Instance.Settings.ContextTurns;
+        var index = turns switch { <= 10 => 0, <= 20 => 1, <= 30 => 2, <= 50 => 3, _ => 4 };
+        ContextTurnsBox.SelectedIndex = index;
         var state = AppState.Instance;
         // 共享管线：手动分析与实时监听的分析结果都汇到这里刷新卡片
         state.Pipeline.Analyzed += outcome => DispatcherQueue.TryEnqueue(() => ShowOutcome(outcome));
@@ -129,8 +133,69 @@ public sealed partial class AnalyzePage : Page
             return;
         }
         _sessions = chat.ListSessions(200);
-        SessionList.ItemsSource = _sessions.Select(s => new SessionRow(s)).ToList();
+        var whitelist = ParseWhitelist(AppState.Instance.Settings.MonitorSessions);
+        _sessionRows = _sessions.Select(s => new SessionRow(s)
+        {
+            Monitored = whitelist.Count == 0 || whitelist.Contains(s.SessionId),
+        }).ToList();
+        ApplySessionFilter();
         RefreshButton.IsEnabled = true;
+    }
+
+    private void ApplySessionFilter()
+    {
+        var keyword = SessionSearchBox.Text?.Trim();
+        SessionList.ItemsSource = string.IsNullOrEmpty(keyword)
+            ? _sessionRows
+            : _sessionRows.Where(r => r.DisplayName.Contains(keyword, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
+    /// <summary>白名单解析（逗号/换行分隔；空 = 全部）。</summary>
+    private static HashSet<string> ParseWhitelist(string raw) =>
+        string.IsNullOrWhiteSpace(raw)
+            ? []
+            : raw.Split(new[] { '\r', '\n', ',', ';', '，', '；' }, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .ToHashSet(StringComparer.Ordinal);
+
+    private void SessionSearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+        => ApplySessionFilter();
+
+    /// <summary>逐会话监听开关变化：写回白名单并热重启监听。</summary>
+    private void MonitorCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox { DataContext: SessionRow row })
+        {
+            return;
+        }
+        var state = AppState.Instance;
+        var whitelist = ParseWhitelist(state.Settings.MonitorSessions);
+        if (row.Monitored)
+        {
+            whitelist.Add(row.Session.SessionId);
+        }
+        else
+        {
+            whitelist.Remove(row.Session.SessionId);
+        }
+        // 全不勾 = 监听全部（清空白名单，保持既有语义）
+        state.Settings.MonitorSessions = whitelist.Count == 0 ? "" : string.Join(",", whitelist);
+        state.SaveSettings();
+        state.RestartMonitor();
+    }
+
+    /// <summary>上下文条数快捷选择（判读与实时监听共用，立即保存）。</summary>
+    private void ContextTurnsBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ContextTurnsBox.SelectedItem is not ComboBoxItem item)
+        {
+            return;
+        }
+        var turns = item.Content?.ToString()?.Replace("上下文", "").Replace("条", "").Trim();
+        if (int.TryParse(turns, out var n) && AppState.Instance.Settings.ContextTurns != n)
+        {
+            AppState.Instance.Settings.ContextTurns = n;
+            AppState.Instance.SaveSettings();
+        }
     }
 
     private void RefreshButton_Click(object sender, RoutedEventArgs e) => RefreshSessions();
@@ -304,9 +369,16 @@ public sealed partial class AnalyzePage : Page
 
     private void Status_Close(object sender, object e) => Status.IsOpen = false;
 
-    private sealed record SessionRow(ChatSession Session)
+    private sealed class SessionRow : System.ComponentModel.INotifyPropertyChanged
     {
+        private bool _monitored;
+
+        public SessionRow(ChatSession session) => Session = session;
+
+        public ChatSession Session { get; }
+
         public string DisplayName => Session.DisplayName;
+
         public string KindLabel => Session.Kind switch
         {
             SessionKind.Group => "群聊",
@@ -314,7 +386,25 @@ public sealed partial class AnalyzePage : Page
             SessionKind.Official => "公众号",
             _ => "会话",
         };
+
         public string CountLabel => $"{Session.MessageCount} 条 · {Session.LastTime:MM-dd HH:mm}";
+
+        /// <summary>实时监听开关（逐会话记忆，全不勾 = 监听全部）。</summary>
+        public bool Monitored
+        {
+            get => _monitored;
+            set
+            {
+                if (_monitored != value)
+                {
+                    _monitored = value;
+                    PropertyChanged?.Invoke(this,
+                        new System.ComponentModel.PropertyChangedEventArgs(nameof(Monitored)));
+                }
+            }
+        }
+
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     }
 
     private sealed record VerdictAnswerRow(string Label, string Value);

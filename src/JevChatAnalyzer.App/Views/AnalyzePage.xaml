@@ -13,6 +13,14 @@
         <!-- 顶部工具条 -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8">
             <Button x:Name="OpenDataButton" Click="OpenDataButton_Click">打开微信数据</Button>
+            <ComboBox x:Name="ContextTurnsBox" SelectionChanged="ContextTurnsBox_SelectionChanged"
+                      Width="150" ToolTipService.ToolTip="判读上下文条数（本次与实时监听共用）">
+                <ComboBoxItem Content="上下文 10 条"/>
+                <ComboBoxItem Content="上下文 20 条"/>
+                <ComboBoxItem Content="上下文 30 条"/>
+                <ComboBoxItem Content="上下文 50 条"/>
+                <ComboBoxItem Content="上下文 80 条"/>
+            </ComboBox>
             <Button x:Name="RefreshButton" Click="RefreshButton_Click" IsEnabled="False">刷新会话</Button>
             <Button x:Name="AnalyzeButton" Click="AnalyzeButton_Click" IsEnabled="False"
                     Style="{StaticResource AccentButtonStyle}">分析对方最新消息</Button>
@@ -31,18 +39,34 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <ListView Grid.Column="0" x:Name="SessionList" SelectionChanged="SessionList_SelectionChanged">
-                <ListView.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel Padding="4" Spacing="2">
-                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                            <TextBlock FontSize="12" Foreground="Gray">
-                                <Run Text="{Binding KindLabel}"/><Run Text=" · "/><Run Text="{Binding CountLabel}"/>
-                            </TextBlock>
-                        </StackPanel>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
+            <StackPanel Grid.Column="0" Spacing="6">
+                <AutoSuggestBox x:Name="SessionSearchBox" PlaceholderText="搜索会话…"
+                                QueryIcon="Find" TextChanged="SessionSearchBox_TextChanged"/>
+                <TextBlock FontSize="11" Foreground="Gray" TextWrapping="Wrap"
+                           Text="勾选「监听」的会话才会实时分析（全不勾 = 监听全部）"/>
+                <ListView x:Name="SessionList" SelectionChanged="SessionList_SelectionChanged" MaxHeight="620">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Padding="4" ColumnSpacing="6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <CheckBox Grid.Column="0" IsChecked="{Binding Monitored, Mode=TwoWay}"
+                                          Checked="MonitorCheck_Changed" Unchecked="MonitorCheck_Changed"
+                                          ToolTipService.ToolTip="实时监听该会话"
+                                          VerticalAlignment="Center"/>
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock FontSize="12" Foreground="Gray">
+                                        <Run Text="{Binding KindLabel}"/><Run Text=" · "/><Run Text="{Binding CountLabel}"/>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </StackPanel>
 
             <ScrollViewer Grid.Column="1">
                 <StackPanel Spacing="12">

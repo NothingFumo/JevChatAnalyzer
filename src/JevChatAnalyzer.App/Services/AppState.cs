@@ -153,14 +153,25 @@ public sealed class AppState
         CurrentAccountDir = null;
     }
 
-    /// <summary>启动/重启实时监听（打开微信数据后调用）。</summary>
+    /// <summary>启动实时监听（打开微信数据后调用）。</summary>
     public void StartMonitor()
     {
         if (!Settings.MonitorEnabled)
         {
             return;
         }
+        RestartMonitor();
+    }
+
+    /// <summary>按最新设置重启监听（白名单/开关变化后热生效；未打开数据时只更新状态）。</summary>
+    public void RestartMonitor()
+    {
         Monitor?.Stop();
+        Monitor = null;
+        if (!Settings.MonitorEnabled || Chat is null)
+        {
+            return;
+        }
         Monitor = new MessageMonitor(this, Pipeline);
         Monitor.StatusChanged += st => MonitorStatusChanged?.Invoke(st);
         Monitor.Start();
