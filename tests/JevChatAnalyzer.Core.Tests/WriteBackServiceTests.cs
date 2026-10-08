@@ -40,7 +40,7 @@ public class WriteBackServiceTests : IDisposable
     [Fact]
     public void BuildQuoteXml_包含判读摘要与refermsg()
     {
-        var xml = WriteBackService.BuildQuoteXml(SampleVerdict(), "征询意见，急迫度 1.2/3", SampleFocus, "wxid_me");
+        var xml = WriteBackService.BuildQuoteXml(SampleVerdict(), "征询意见，急迫度 1.2/3", SampleFocus, "456789@chatroom");
 
         Assert.Contains("<type>57</type>", xml);
         Assert.Contains("<svrid>743043483022253863</svrid>", xml);
@@ -55,7 +55,7 @@ public class WriteBackServiceTests : IDisposable
     public void BuildQuoteXml_单引号转义()
     {
         var verdict = SampleVerdict() with { Summary = "对方说'不干了'" };
-        var xml = WriteBackService.BuildQuoteXml(verdict, "对方说'不干了'", SampleFocus, "wxid_me");
+        var xml = WriteBackService.BuildQuoteXml(verdict, "对方说'不干了'", SampleFocus, "456789@chatroom");
         // 单引号转义后 XML 仍可解析，且不含裸引号造成的结构破坏
         var doc = System.Xml.Linq.XDocument.Parse(xml);
         Assert.Contains("不干了", xml);
@@ -65,7 +65,7 @@ public class WriteBackServiceTests : IDisposable
     public void BuildQuoteXml_超长摘要截断()
     {
         var longText = new string('长', 2000);
-        var xml = WriteBackService.BuildQuoteXml(SampleVerdict(), longText, SampleFocus, "wxid_me");
+        var xml = WriteBackService.BuildQuoteXml(SampleVerdict(), longText, SampleFocus, "456789@chatroom");
         Assert.DoesNotContain(longText, xml); // 被截断
         Assert.Contains("…", xml);
     }
@@ -98,6 +98,67 @@ public class WriteBackServiceTests : IDisposable
         Assert.Equal("20261008-120000-abcd1234", loaded.Id);
         Assert.Equal([4538L], loaded.InsertedLocalIds);
         Assert.Null(loaded.RevokedAt);
+    }
+
+    [Fact]
+    public void BuildQuoteXml_引用块挂对方消息()
+    {
+        var xml = WriteBackService.BuildQuoteXml(SampleVerdict(), "摘要", SampleFocus, "456789@chatroom");
+
+        Assert.Contains("<chatusr>wxid_bob</chatusr>", xml);
+        Assert.Contains("<displayname>小明</displayname>", xml);
+        Assert.Contains("<fromusr>456789@chatroom</fromusr>", xml);
+    }
+
+    [Fact]
+    public void EnqueuePending_我的消息被拒绝()
+    {
+        var service = new WriteBackService(_appData);
+        var mine = SampleFocus with { IsMine = true };
+        Assert.Throws<WriteBackException>(() =>
+            service.EnqueuePending("wxid_me", "wxid_bob", mine, SampleVerdict(), "摘要"));
+        Assert.Empty(service.ListPending());
+    }
+
+    [Fact]
+    public void EnqueuePending_同消息幂等覆盖_列表往返()
+    {
+        var service = new WriteBackService(_appData);
+        service.EnqueuePending("wxid_me", "wxid_bob", SampleFocus, SampleVerdict(), "第一版");
+        service.EnqueuePending("wxid_me", "wxid_bob", SampleFocus,
+            SampleVerdict() with { Summary = "更新后的结论" }, "更新后的结论");
+
+        var pending = service.ListPending();
+        var only = Assert.Single(pending);
+        Assert.Equal("wxid_bob", only.SessionId);
+        Assert.Equal("wxid_bob", only.FocusMessage.SenderWxId);
+        Assert.Equal("更新后的结论", only.QuoteText);
+        Assert.Equal("Msg_abc", only.TableName);
+    }
+
+    [Fact]
+    public void RemovePending_移除指定项()
+    {
+        var service = new WriteBackService(_appData);
+        service.EnqueuePending("wxid_me", "wxid_bob", SampleFocus, SampleVerdict(), "摘要");
+        var id = service.ListPending()[0].Id;
+        service.RemovePending(id);
+        Assert.Empty(service.ListPending());
+    }
+
+    [Fact]
+    public void FlushPending_分片缺失时保留待写并报错()
+    {
+        var service = new WriteBackService(_appData);
+        service.EnqueuePending("wxid_me", "wxid_bob", SampleFocus, SampleVerdict(), "摘要");
+
+        // 密钥合法但分片路径不存在 → 落库失败，条目保留
+        var results = service.FlushPending(new string('a', 64));
+
+        var (entry, error) = Assert.Single(results);
+        Assert.Null(entry);
+        Assert.NotNull(error);
+        Assert.Single(service.ListPending()); // 失败项保留在队列
     }
 
     [Fact]

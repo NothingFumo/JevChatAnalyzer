@@ -111,15 +111,122 @@ public sealed class WriteBackService
         File.WriteAllText(_indexPath, JsonSerializer.Serialize(entries, JsonOptions));
     }
 
+    // ── 待写队列：判读（微信运行中，只读）时入队；微信退出后由监视器自动落库 ──
+
+    private string PendingPath => Path.Combine(_backupDir, "pending.json");
+
+    /// <summary>一条待写回的判读结论（落库所需的全部快照）。</summary>
+    public sealed record PendingWrite(
+        string Id,
+        string WxId,
+        string SessionId,
+        string ShardPath,
+        string TableName,
+        ChatMessage FocusMessage,
+        JudgeVerdict Verdict,
+        string QuoteText,
+        DateTimeOffset QueuedAt);
+
+    /// <summary>入队一条待写回（幂等：同一条消息只保留最新结论）。</summary>
+    public void EnqueuePending(string wxId, string sessionId, ChatMessage focusMessage,
+        JudgeVerdict verdict, string quoteText)
+    {
+        if (focusMessage.IsMine)
+        {
+            throw new WriteBackException("只能对「对方发送的消息」自动写回。");
+        }
+        var pending = LoadPending();
+        pending.RemoveAll(p => p.SessionId == sessionId && p.FocusMessage.LocalId == focusMessage.LocalId);
+        pending.Add(new PendingWrite(
+            Id: $"{DateTimeOffset.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid().ToString("N")[..8]}",
+            WxId: wxId,
+            SessionId: sessionId,
+            ShardPath: focusMessage.Location.ShardPath,
+            TableName: focusMessage.Location.TableName,
+            FocusMessage: focusMessage,
+            Verdict: verdict,
+            QuoteText: quoteText,
+            QueuedAt: DateTimeOffset.Now));
+        SavePending(pending);
+    }
+
+    public IReadOnlyList<PendingWrite> ListPending() => LoadPending();
+
+    public void RemovePending(string id)
+    {
+        var pending = LoadPending();
+        pending.RemoveAll(p => p.Id == id);
+        SavePending(pending);
+    }
+
+    /// <summary>落库全部待写项（微信退出后调用）。返回 (成功条目, 失败原因列表)。</summary>
+    public IReadOnlyList<(WriteBackEntry? Entry, string? Error)> FlushPending(string dbKeyHex)
+    {
+        var results = new List<(WriteBackEntry? Entry, string? Error)>();
+        foreach (var p in LoadPending())
+        {
+            try
+            {
+                var entry = WriteQuoteMessage(p.ShardPath, p.TableName, dbKeyHex,
+                    p.WxId, p.SessionId, p.FocusMessage, p.Verdict, p.QuoteText);
+                results.Add((entry, null));
+            }
+            catch (Exception e)
+            {
+                // 自动落库在后台执行，任何失败都转为结果项而不是中断整批
+                results.Add((null, $"{p.SessionId}#{p.FocusMessage.LocalId}: {e.Message}"));
+            }
+        }
+        if (results.All(r => r.Error is null))
+        {
+            SavePending([]);
+        }
+        else
+        {
+            // 只清掉成功的，失败的保留待下次
+            var failedKeys = results.Where(r => r.Error is not null)
+                .Select(r => r.Error!).ToHashSet();
+            SavePending(LoadPending().Where(p => failedKeys.Any(f => f.Contains($"{p.SessionId}#{p.FocusMessage.LocalId}"))).ToList());
+        }
+        return results;
+    }
+
+    private List<PendingWrite> LoadPending()
+    {
+        if (!File.Exists(PendingPath))
+        {
+            return [];
+        }
+        try
+        {
+            return JsonSerializer.Deserialize<List<PendingWrite>>(File.ReadAllText(PendingPath), JsonOptions) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private void SavePending(List<PendingWrite> pending)
+    {
+        Directory.CreateDirectory(_backupDir);
+        File.WriteAllText(PendingPath, JsonSerializer.Serialize(pending, JsonOptions));
+    }
+
     /// <summary>
-    /// 把判读结论写回为一条引用消息（引用被分析的那条消息）。
+    /// 把判读结论写回为一条引用消息（引用「对方发送的被分析消息」）。
     /// 返回台账条目。安全链：微信退出检查 → 整库备份 → 显式 17 列 INSERT。
+ /// 仅接受对方发送的消息（IsMine=false）
     /// </summary>
     public WriteBackEntry WriteQuoteMessage(
         string dbShardPath, string tableName, string dbKeyHex,
         string wxId, string sessionId, ChatMessage focusMessage, JudgeVerdict verdict,
         string quoteText)
     {
+        if (focusMessage.IsMine)
+        {
+            throw new WriteBackException("只能对「对方发送的消息」写回引用（本软件的分析对象）。");
+        }
         if (!IsWeChatClosed())
         {
             throw new WriteBackException("微信正在运行。为避免写入冲突与数据不一致，请先完全退出微信再执行写回。");
@@ -137,7 +244,7 @@ public sealed class WriteBackService
         File.Copy(dbShardPath, backupPath, overwrite: true);
         var sha = Sha256Hex(File.ReadAllBytes(backupPath));
 
-        var content = BuildQuoteXml(verdict, quoteText, focusMessage, wxId);
+        var content = BuildQuoteXml(verdict, quoteText, focusMessage, sessionId);
         var inserted = new List<long>();
         using (var db = SqlCipherNative.OpenReadWrite(dbShardPath, dbKeyHex))
         {
@@ -273,8 +380,11 @@ public sealed class WriteBackService
         return null;
     }
 
-    /// <summary>构造 appmsg type=57 引用消息 XML：正文为判读摘要，refermsg 指向被分析消息。</summary>
-    internal static string BuildQuoteXml(JudgeVerdict verdict, string quoteText, ChatMessage focus, string myWxId)
+    /// <summary>
+    /// 构造 appmsg type=57 引用消息 XML：正文为判读摘要，refermsg 指向「对方发送的被分析消息」
+    /// （chatusr/displayname 为对方，微信里呈现为「我引用了对方的话 + 判读结论」）。
+    /// </summary>
+    internal static string BuildQuoteXml(JudgeVerdict verdict, string quoteText, ChatMessage focus, string sessionId)
     {
         var summary = Esc(quoteText.Length > 800 ? quoteText[..800] + "…" : quoteText);
         var referContent = Esc(focus.DisplayText.Length > 500 ? focus.DisplayText[..500] + "…" : focus.DisplayText);
@@ -292,9 +402,9 @@ public sealed class WriteBackService
                     <refermsg>
                         <type>1</type>
                         <svrid>{svrid}</svrid>
-                        <fromusr>{Esc(focus.Location.TableName)}</fromusr>
-                        <chatusr>{Esc(myWxId)}</chatusr>
-                        <displayname>JevChatAnalyzer</displayname>
+                        <fromusr>{Esc(sessionId)}</fromusr>
+                        <chatusr>{Esc(focus.SenderWxId)}</chatusr>
+                        <displayname>{Esc(focus.SenderDisplayName)}</displayname>
                         <content>{referContent}</content>
                         <createtime>{referTime}</createtime>
                     </refermsg>
