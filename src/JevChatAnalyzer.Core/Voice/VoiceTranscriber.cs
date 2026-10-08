@@ -27,13 +27,15 @@ public sealed class VoiceTranscriber : IDisposable
     public const string DefaultModelDirName = "sensevoice";
     public const long ModelDownloadBytes = 245 * 1024 * 1024; // 约 245MB（提示用）
 
-    /// <summary>modelscope 直链（国内快）；hf 为兜底镜像。</summary>
+    /// <summary>modelscope 直链（国内快）；hf / hf-mirror 依次兜底（匿名 401/403 时换源）。</summary>
     public static readonly (string Name, string Url)[] ModelSources =
     [
         ("model.int8.onnx", "https://modelscope.cn/models/pengzhendong/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/master/model.int8.onnx"),
         ("tokens.txt", "https://modelscope.cn/models/pengzhendong/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/master/tokens.txt"),
         ("hf-model.int8.onnx", "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/main/model.int8.onnx"),
         ("hf-tokens.txt", "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/main/tokens.txt"),
+        ("hfm-model.int8.onnx", "https://hf-mirror.com/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/main/model.int8.onnx"),
+        ("hfm-tokens.txt", "https://hf-mirror.com/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/main/tokens.txt"),
     ];
 
     private OfflineRecognizer? _recognizer;
@@ -65,25 +67,42 @@ public sealed class VoiceTranscriber : IDisposable
     public async Task DownloadModelAsync(CancellationToken ct = default, IProgress<DownloadProgress>? progress = null)
     {
         Directory.CreateDirectory(_modelDir);
-        var files = new[]
+        // 每个目标文件按源顺序尝试：modelscope → huggingface → hf-mirror
+        var files = new (string Target, string[] Sources)[]
         {
-            (Target: "model.int8.onnx", Source: ModelSources[0].Url, Fallback: ModelSources[2].Url),
-            (Target: "tokens.txt", Source: ModelSources[1].Url, Fallback: ModelSources[3].Url),
+            ("model.int8.onnx", [ModelSources[0].Url, ModelSources[2].Url, ModelSources[4].Url]),
+            ("tokens.txt", [ModelSources[1].Url, ModelSources[3].Url, ModelSources[5].Url]),
         };
-        foreach (var (target, source, fallback) in files)
+        foreach (var (target, sources) in files)
         {
             var dest = Path.Combine(_modelDir, target);
             if (File.Exists(dest) && new FileInfo(dest).Length > 1024)
             {
                 continue;
             }
-            try
+            Exception? lastError = null;
+            foreach (var source in sources)
             {
-                await DownloadToAsync(source, dest, ct, progress);
+                try
+                {
+                    await DownloadToAsync(source, dest, ct, progress);
+                    lastError = null;
+                    break;
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception e) when (!ct.IsCancellationRequested)
+                {
+                    lastError = e; // 401/403/网络失败 → 换下一个源
+                }
             }
-            catch (Exception) when (!ct.IsCancellationRequested)
+            if (lastError is not null)
             {
-                await DownloadToAsync(fallback, dest, ct, progress);
+                throw new InvalidOperationException(
+                    $"下载 {target} 失败（已尝试 modelscope、huggingface、hf-mirror）：{lastError.Message}",
+                    lastError);
             }
         }
     }

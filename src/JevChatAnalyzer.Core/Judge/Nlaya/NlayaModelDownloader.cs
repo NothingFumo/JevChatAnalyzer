@@ -14,11 +14,13 @@ public sealed record NlayaModelResult(string Directory, IReadOnlyList<string> Fi
 /// <summary>
 /// laya-multilingual checkpoint 下载器：从 HuggingFace 拉取 PyTorch 权重与配置
 /// （NLaya TorchSharp 后端直载 safetensors，无需等待官方 ONNX 导出发布）。
-/// 主源 huggingface.co，可配 HF_ENDPOINT 镜像；文件落盘前原子改名，断点不续传（重下覆盖）。
+/// 源顺序：HF_ENDPOINT（如设置）→ huggingface.co → hf-mirror.com（镜像，匿名 401/403 时的兜底）；
+/// 文件落盘前原子改名；目录为空串/空白时回退默认目录（设置项未填写是常态）。
 /// </summary>
 public static class NlayaModelDownloader
 {
     public const string RepoId = "convaiinnovations/laya-multilingual";
+    public const string MirrorBase = "https://hf-mirror.com";
 
     /// <summary>checkpoint 相对路径清单（共 5 个关键文件）。</summary>
     public static readonly string[] Files =
@@ -34,28 +36,40 @@ public static class NlayaModelDownloader
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "JevChatAnalyzer", "models", "laya-multilingual");
 
-    private static string BaseUrl()
+    /// <summary>目录解析：null/空串/空白 → 默认目录（设置项允许留空）。</summary>
+    public static string ResolveDirectory(string? dir) =>
+        string.IsNullOrWhiteSpace(dir) ? DefaultDirectory() : dir;
+
+    /// <summary>下载源基址序列（按优先级）。</summary>
+    public static IReadOnlyList<string> BaseUrls()
     {
+        var list = new List<string>();
         var endpoint = Environment.GetEnvironmentVariable("HF_ENDPOINT");
-        return string.IsNullOrWhiteSpace(endpoint) ? "https://huggingface.co" : endpoint.TrimEnd('/');
+        if (!string.IsNullOrWhiteSpace(endpoint))
+        {
+            list.Add(endpoint.TrimEnd('/'));
+        }
+        list.Add("https://huggingface.co");
+        list.Add(MirrorBase);
+        return list;
     }
 
     /// <summary>模型是否已就绪（目录内关键文件齐全且非空）。</summary>
     public static bool IsModelReady(string? dir = null)
     {
-        var root = dir ?? DefaultDirectory();
+        var root = ResolveDirectory(dir);
         return Files.All(f => IsReadyFile(Path.Combine(root, f.Replace('/', Path.DirectorySeparatorChar))));
     }
 
     private static bool IsReadyFile(string path) => File.Exists(path) && new FileInfo(path).Length > 0;
 
-    /// <summary>下载 checkpoint。已就绪时直接返回。</summary>
+    /// <summary>下载 checkpoint。已就绪时直接返回。单文件失败自动换下一个源。</summary>
     public static async Task<NlayaModelResult> DownloadAsync(
         string? targetDir = null, IProgress<DownloadProgress>? progress = null, CancellationToken ct = default)
     {
-        var root = targetDir ?? DefaultDirectory();
+        var root = ResolveDirectory(targetDir);
         Directory.CreateDirectory(root);
-        var baseUrl = BaseUrl();
+        var bases = BaseUrls();
         var downloaded = new List<string>();
 
         foreach (var rel in Files)
@@ -68,9 +82,33 @@ public static class NlayaModelDownloader
                 continue;
             }
             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-            var url = $"{baseUrl}/{RepoId}/resolve/main/{rel}";
-            await DownloadFileAsync(url, dest, ct, progress);
-            downloaded.Add(rel);
+
+            Exception? lastError = null;
+            foreach (var baseUrl in bases)
+            {
+                try
+                {
+                    var url = $"{baseUrl}/{RepoId}/resolve/main/{rel}";
+                    await DownloadFileAsync(url, dest, ct, progress);
+                    downloaded.Add(rel);
+                    lastError = null;
+                    break;
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception e)
+                {
+                    lastError = e; // 401/403/网络中断 → 换下一个源
+                }
+            }
+            if (lastError is not null)
+            {
+                throw new InvalidOperationException(
+                    $"下载 {rel} 失败（已尝试 {string.Join("、", bases.Select(b => new Uri(b).Host))}）：{lastError.Message}",
+                    lastError);
+            }
         }
         return new NlayaModelResult(root, downloaded);
     }
@@ -78,7 +116,7 @@ public static class NlayaModelDownloader
     /// <summary>删除模型目录（设置页的移除按钮）。</summary>
     public static void DeleteModel(string? dir = null)
     {
-        var root = dir ?? DefaultDirectory();
+        var root = ResolveDirectory(dir);
         if (Directory.Exists(root))
         {
             Directory.Delete(root, recursive: true);
