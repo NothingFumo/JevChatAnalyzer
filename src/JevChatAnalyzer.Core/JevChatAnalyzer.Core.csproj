@@ -7,7 +7,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.8" />
   </ItemGroup>
 
   <ItemGroup>
@@ -16,6 +18,7 @@
 
   <ItemGroup>
     <None Include="..\..\native\rwk\rwk.dll" Link="rwk.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\native\sqlcipher\sqlcipher.dll" Link="sqlcipher.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
