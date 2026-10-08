@@ -22,19 +22,27 @@ if (-not $cert) {
     # 导出 .pfx 供打包器签名
     $password = ConvertTo-SecureString -String "JevChatAnalyzer" -Force -AsPlainText
     Export-PfxCertificate -Cert $cert -FilePath (Join-Path $root "src\JevChatAnalyzer.App\JevChatAnalyzer.pfx") -Password $password | Out-Null
-    # 提示用户安装到受信任人存储（MSIX 安装前提）
+    # 提示用户安装到受信任人存储（MSIX 安装前提；无管理员时降级为警告）
     Write-Host "正在把证书安装到 本地计算机\受信任的人（需要管理员确认 UAC）…"
     $tempCer = Join-Path $env:TEMP "JevChatAnalyzer.cer"
     Export-Certificate -Cert $cert -FilePath $tempCer | Out-Null
-    Import-Certificate -FilePath $tempCer -CertStoreLocation "Cert:\LocalMachine\TrustedPeople" | Out-Null
+    try {
+        Import-Certificate -FilePath $tempCer -CertStoreLocation "Cert:\LocalMachine\TrustedPeople" -ErrorAction Stop | Out-Null
+    } catch {
+        Write-Warning "证书未能装入 LocalMachine\TrustedPeople（缺少管理员权限）。安装 .msix 前请手动执行：" ``
+            "certutil -addstore TrustedPeople $tempCer"
+    }
 }
 
-# 2) 发布并生成 MSIX
+# 2) 发布并生成 MSIX（PackAsMsix 切换项目到打包模式并挂入 Package.appxmanifest；签名用证书存储中的指纹）
+$thumb = if (Test-Path $certThumbFile) { (Get-Content $certThumbFile -Raw).Trim() } else { $null }
+$signProp = if ($thumb) { "-p:PackageCertificateThumbprint=$thumb" } else { "-p:PackageCertificateKeyFile=JevChatAnalyzer.pfx -p:PackageCertificatePassword=JevChatAnalyzer" }
 dotnet publish (Join-Path $root "src\JevChatAnalyzer.App\JevChatAnalyzer.App.csproj") `
-    -c $Configuration -p:Platform=x64 -p:PlatformName=x64 `
+    -c $Configuration -r win-x64 --self-contained `
+    -p:Platform=x64 -p:PlatformName=x64 `
+    -p:PackAsMsix=true `
     -p:GenerateAppxPackageOnBuild=true `
-    -p:PackageCertificateKeyFile=JevChatAnalyzer.pfx `
-    -p:PackageCertificatePassword=JevChatAnalyzer
+    $signProp
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "`nMSIX 输出目录：src\JevChatAnalyzer.App\AppPackages\"
