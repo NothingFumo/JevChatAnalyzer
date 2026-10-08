@@ -34,7 +34,7 @@ public sealed partial class SettingsPage : Page
         CloudSanitizeSwitch.IsOn = s.CloudSanitize;
         LayaServerBox.Text = s.LayaServerUrl;
         VoiceSwitch.IsOn = s.VoiceEnabled;
-        WriteBackSwitch.IsOn = s.WriteBackEnabled;
+        WriteBackSwitch.IsOn = s.AutoWriteEnabled;
 
         var transcriber = AppState.Instance.Transcriber;
         VoiceModelStatus.Text = transcriber.IsModelReady
@@ -201,7 +201,7 @@ public sealed partial class SettingsPage : Page
         s.CloudSanitize = CloudSanitizeSwitch.IsOn;
         s.LayaServerUrl = LayaServerBox.Text.Trim();
         s.VoiceEnabled = VoiceSwitch.IsOn;
-        s.WriteBackEnabled = WriteBackSwitch.IsOn;
+        s.AutoWriteEnabled = WriteBackSwitch.IsOn;
         AppState.Instance.SaveSettings();
         SaveHint.Text = "已保存 " + DateTimeOffset.Now.ToString("HH:mm:ss");
     }

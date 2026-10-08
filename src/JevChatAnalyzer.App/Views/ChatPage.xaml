@@ -18,8 +18,8 @@
             <Button x:Name="JudgeButton" Click="JudgeButton_Click" IsEnabled="False" Style="{StaticResource AccentButtonStyle}">判读选中消息</Button>
             <Button x:Name="TranscribeButton" Click="TranscribeButton_Click" IsEnabled="False">转写语音</Button>
             <Button x:Name="DraftButton" Click="DraftButton_Click" IsEnabled="False">起草回复</Button>
-            <Button x:Name="WriteBackButton" Click="WriteBackButton_Click" IsEnabled="False">写回为引用消息</Button>
-            <Button x:Name="RevokeButton" Click="RevokeButton_Click" IsEnabled="False">撤销写回</Button>
+            <Button x:Name="RevokeButton" Click="RevokeButton_Click" IsEnabled="False">撤销最近写回</Button>
+            <Button x:Name="PendingButton" Click="PendingButton_Click">待写队列</Button>
             <ProgressRing x:Name="BusyRing" Width="24" Height="24" IsActive="False"/>
         </StackPanel>
 

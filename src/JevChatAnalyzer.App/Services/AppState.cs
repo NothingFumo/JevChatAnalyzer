@@ -134,4 +134,56 @@ public sealed class AppState
         CurrentDbKey = null;
         CurrentAccountDir = null;
     }
+
+    // ── 自动写回：判读入队 → 监视微信退出 → 自动落库 ──
+
+    private System.Threading.Timer? _autoWriteTimer;
+    private int _autoWriteBusy;
+    private string? _watchedDbKey;
+
+    /// <summary>自动写回完成（成功条目 / 失败原因）。线程池线程上触发。</summary>
+    public event Action<IReadOnlyList<(Core.WriteBack.WriteBackEntry? Entry, string? Error)>>? AutoWriteCompleted;
+
+    /// <summary>启动微信退出监视（判读入队后调用；幂等）。落库用开启监视时的密钥快照。</summary>
+    public void EnsureAutoWriteWatch()
+    {
+        if (!Settings.AutoWriteEnabled)
+        {
+            return;
+        }
+        _watchedDbKey ??= CurrentDbKey;
+        _autoWriteTimer ??= new System.Threading.Timer(_ =>
+        {
+            if (Interlocked.Exchange(ref _autoWriteBusy, 1) == 1)
+            {
+                return;
+            }
+            try
+            {
+                if (!Settings.AutoWriteEnabled || WriteBack.ListPending().Count == 0)
+                {
+                    return;
+                }
+                if (!Core.WriteBack.WriteBackService.IsWeChatClosed())
+                {
+                    return; // 微信仍在运行，等下一轮
+                }
+                var key = _watchedDbKey ?? CurrentDbKey;
+                if (key is null)
+                {
+                    return;
+                }
+                var results = WriteBack.FlushPending(key);
+                AutoWriteCompleted?.Invoke(results);
+            }
+            catch
+            {
+                // 监视循环内的异常不外抛，下一轮重试
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _autoWriteBusy, 0);
+            }
+        }, null, dueTime: 2000, period: 2000);
+    }
 }

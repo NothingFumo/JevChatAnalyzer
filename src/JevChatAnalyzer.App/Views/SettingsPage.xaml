@@ -110,9 +110,9 @@
                 <!--  隐私与写回  -->
                 <StackPanel x:Name="PanePrivacy" Spacing="12" Visibility="Collapsed">
                     <TextBlock FontSize="20" FontWeight="SemiBold">隐私与写回</TextBlock>
-                    <ToggleSwitch x:Name="WriteBackSwitch" OnContent="允许写回引用消息（显式确认后执行）" OffContent="写回功能：关"/>
+                    <ToggleSwitch x:Name="WriteBackSwitch" OnContent="自动写回：判读对方消息后入队，微信退出时自动落库" OffContent="自动写回：关（仅分析，不写库）"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Text="写回会修改微信数据库。每次写入前自动整库备份（SHA-256 记账），支持按行撤销与整库还原；微信必须完全退出后才允许写入。"/>
+                               Text="写回会把判读结论作为引用消息挂在「对方发送的消息」上。判读（微信运行中，只读）后进入待写队列，检测到微信完全退出即自动落库；每次写入前自动整库备份（SHA-256 记账），支持按行撤销与整库还原。"/>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Click="OpenBackups_Click">打开备份目录</Button>
                         <Button x:Name="ListWriteBacksButton" Click="ListWriteBacks_Click">查看写回台账</Button>

@@ -33,8 +33,8 @@ public sealed class AppSettings
     /// <summary>上下文轮数。</summary>
     public int ContextTurns { get; set; } = 20;
 
-    /// <summary>写回总开关（默认关，写入是显式动作）。</summary>
-    public bool WriteBackEnabled { get; set; } = false;
+    /// <summary>自动写回：判读对方消息后入队，微信退出后自动落库（本软件的核心动作，默认开）。</summary>
+    public bool AutoWriteEnabled { get; set; } = true;
 
     /// <summary>起草（候选回复）开关与配置。</summary>
     public bool DraftEnabled { get; set; } = false;

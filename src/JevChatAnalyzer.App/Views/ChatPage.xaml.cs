@@ -18,11 +18,31 @@ public sealed partial class ChatPage : Page
     private ChatSession? _currentSession;
     private ChatMessage? _focusMessage;
     private JudgeVerdict? _lastVerdict;
-    private WriteBackEntry? _lastWriteBack;
 
     public ChatPage()
     {
         InitializeComponent();
+        // 自动写回完成回调：从后台线程切回 UI 线程展示结果
+        AppState.Instance.AutoWriteCompleted += results =>
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                var ok = results.Where(r => r.Error is null).ToList();
+                var failed = results.Where(r => r.Error is not null).ToList();
+                if (ok.Count > 0)
+                {
+                    SetStatus($"自动写回完成：{ok.Count} 条引用消息已写入微信数据库" +
+                              $"（{string.Join("、", ok.Select(r => r.Entry!.SessionId))}）。" +
+                              "启动微信即可看到；可随时「撤销最近写回」。", InfoBarSeverity.Success);
+                    RevokeButton.IsEnabled = true;
+                }
+                if (failed.Count > 0)
+                {
+                    SetStatus($"自动写回有 {failed.Count} 条失败（保留在队列中）：\n" +
+                              string.Join("\n", failed.Select(r => r.Error)), InfoBarSeverity.Warning);
+                }
+            });
+        };
     }
 
     private void SetStatus(string message, InfoBarSeverity severity = InfoBarSeverity.Informational)
@@ -43,8 +63,7 @@ public sealed partial class ChatPage : Page
                                      && AppState.Instance.Transcriber.IsModelReady
                                      && AppState.Instance.CurrentAccountDir is not null;
         DraftButton.IsEnabled = hasFocus && _lastVerdict is not null && AppState.Instance.Settings.DraftEnabled;
-        WriteBackButton.IsEnabled = hasFocus && _lastVerdict is not null && AppState.Instance.Settings.WriteBackEnabled;
-        RevokeButton.IsEnabled = !busy && _lastWriteBack is not null && _lastWriteBack.RevokedAt is null;
+        RevokeButton.IsEnabled = !busy && AppState.Instance.WriteBack.ListEntries().Any(en => en.RevokedAt is null);
     }
 
     private async void OpenDataButton_Click(object sender, RoutedEventArgs e)
@@ -268,7 +287,28 @@ public sealed partial class ChatPage : Page
                 Verdict = verdict,
                 CreatedAt = DateTimeOffset.Now,
             });
-            SetStatus("判读完成。", InfoBarSeverity.Success);
+
+            // 自动写回：判读「对方消息」后入队，微信退出后由监视器落库
+            if (state.Settings.AutoWriteEnabled)
+            {
+                if (_focusMessage.IsMine)
+                {
+                    SetStatus("判读完成。自动写回仅针对对方发送的消息（本条是我发的，跳过）。",
+                        InfoBarSeverity.Informational);
+                }
+                else
+                {
+                    state.WriteBack.EnqueuePending(state.CurrentWxId!, _currentSession.SessionId,
+                        _focusMessage, verdict, quoteText: verdict.Summary);
+                    state.EnsureAutoWriteWatch();
+                    SetStatus("判读完成，已加入待写队列——微信完全退出后将自动写入为引用消息" +
+                              "（引用对方这条消息，可随时撤销/还原）。", InfoBarSeverity.Success);
+                }
+            }
+            else
+            {
+                SetStatus("判读完成（自动写回已在设置中关闭）。", InfoBarSeverity.Success);
+            }
         }
         catch (Exception ex)
         {
@@ -280,66 +320,39 @@ public sealed partial class ChatPage : Page
         }
     }
 
-    private async void WriteBackButton_Click(object sender, RoutedEventArgs e)
+    /// <summary>待写队列视图（入队/落库进度透明可查）。</summary>
+    private void PendingButton_Click(object sender, RoutedEventArgs e)
     {
-        var state = AppState.Instance;
-        if (_focusMessage is null || _currentSession is null || _lastVerdict is null)
-        {
-            return;
-        }
-        if (!WriteBackService.IsWeChatClosed())
-        {
-            SetStatus("微信正在运行。写回前请先完全退出微信（系统托盘右键 → 退出）。", InfoBarSeverity.Warning);
-            return;
-        }
-        var confirm = new ContentDialog
+        var pending = AppState.Instance.WriteBack.ListPending();
+        var text = pending.Count == 0
+            ? "待写队列为空。判读「对方消息」后会自动入队，微信退出时落库。"
+            : string.Join("\n", pending.Select(p =>
+                $"{p.QueuedAt:MM-dd HH:mm} {p.SessionId} 引用「{p.FocusMessage.DisplayText}」"));
+        _ = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "确认写回",
-            Content = $"将在微信数据库中插入一条引用消息（引用被分析的那条消息，正文为判读摘要）。\n\n" +
-                      "写入前会自动整库备份，可随时撤销或整库还原。是否继续？",
-            PrimaryButtonText = "写入",
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Close,
-        };
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
-        {
-            return;
-        }
-        SetBusy(true);
-        try
-        {
-            var table = _focusMessage.Location.TableName;
-            var shard = _focusMessage.Location.ShardPath;
-            _lastWriteBack = state.WriteBack.WriteQuoteMessage(
-                shard, table, state.CurrentDbKey!, state.CurrentWxId!,
-                _currentSession.SessionId, _focusMessage, _lastVerdict,
-                quoteText: _lastVerdict.Summary);
-            RevokeButton.IsEnabled = true;
-            SetStatus($"已写回（{_lastWriteBack.Id}）。启动微信后即可看到；如需撤销请点击「撤销写回」。", InfoBarSeverity.Success);
-        }
-        catch (Exception ex)
-        {
-            SetStatus($"写回失败：{ex.Message}", InfoBarSeverity.Error);
-        }
-        finally
-        {
-            SetBusy(false);
-        }
+            Title = $"待写队列（{pending.Count}）",
+            Content = new ScrollViewer { MaxHeight = 320, Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap } },
+            CloseButtonText = "关闭",
+        }.ShowAsync();
     }
 
     private async void RevokeButton_Click(object sender, RoutedEventArgs e)
     {
         var state = AppState.Instance;
-        if (_lastWriteBack is null)
+        // 撤销对象 = 台账中最近一条生效中的写回
+        var entry = state.WriteBack.ListEntries().LastOrDefault(en => en.RevokedAt is null);
+        if (entry is null)
         {
+            SetStatus("当前没有可撤销的写回记录。", InfoBarSeverity.Informational);
             return;
         }
         var confirm = new ContentDialog
         {
             XamlRoot = XamlRoot,
             Title = "撤销写回",
-            Content = "将从微信数据库删除本工具写入的引用消息（不影响你之后的新消息）。写入时的备份文件仍保留，可整库还原。是否继续？",
+            Content = $"将删除 {entry.WrittenAt:MM-dd HH:mm} 写入的引用消息（{entry.SessionId}，" +
+                      "不影响你之后的新消息）。备份文件仍保留，可整库还原。是否继续？",
             PrimaryButtonText = "撤销",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
@@ -351,10 +364,8 @@ public sealed partial class ChatPage : Page
         SetBusy(true);
         try
         {
-            var deleted = state.WriteBack.Revoke(_lastWriteBack, state.CurrentDbKey!);
-            _lastWriteBack = null;
-            RevokeButton.IsEnabled = false;
-            SetStatus($"已撤销（删除 {deleted} 行）。", InfoBarSeverity.Success);
+            var deleted = state.WriteBack.Revoke(entry, state.CurrentDbKey!);
+            SetStatus($"已撤销（删除 {deleted} 行）。备份仍在，可在设置中整库还原。", InfoBarSeverity.Success);
         }
         catch (Exception ex)
         {
