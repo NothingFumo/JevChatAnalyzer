@@ -1,0 +1,74 @@
+<Page
+    x:Class="JevChatAnalyzer.App.Views.AnalyzePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Padding="12" RowSpacing="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- 顶部工具条 -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8">
+            <Button x:Name="OpenDataButton" Click="OpenDataButton_Click">打开微信数据</Button>
+            <Button x:Name="RefreshButton" Click="RefreshButton_Click" IsEnabled="False">刷新会话</Button>
+            <Button x:Name="AnalyzeButton" Click="AnalyzeButton_Click" IsEnabled="False"
+                    Style="{StaticResource AccentButtonStyle}">分析对方最新消息</Button>
+            <Button x:Name="DraftButton" Click="DraftButton_Click" IsEnabled="False">起草回复</Button>
+            <Button x:Name="RevokeButton" Click="RevokeButton_Click" IsEnabled="False">撤销最近写回</Button>
+            <Button x:Name="PendingButton" Click="PendingButton_Click">待写队列</Button>
+            <ProgressRing x:Name="BusyRing" Width="24" Height="24" IsActive="False"/>
+        </StackPanel>
+
+        <InfoBar x:Name="Status" Grid.Row="1" IsOpen="False" Severity="Informational" CloseButtonClick="Status_Close"/>
+
+        <!-- 会话列表（仅名称与统计，不展示消息内容）+ 判读结果卡片 -->
+        <Grid Grid.Row="2" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="260"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <ListView Grid.Column="0" x:Name="SessionList" SelectionChanged="SessionList_SelectionChanged">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Padding="4" Spacing="2">
+                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock FontSize="12" Foreground="Gray">
+                                <Run Text="{Binding KindLabel}"/><Run Text=" · "/><Run Text="{Binding CountLabel}"/>
+                            </TextBlock>
+                        </StackPanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+
+            <ScrollViewer Grid.Column="1">
+                <StackPanel Spacing="12">
+                    <InfoBar x:Name="FocusInfo" IsOpen="False" Severity="Informational"
+                             Title="本次分析对象"/>
+                    <!-- 判读结果卡片 -->
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            CornerRadius="8" Padding="12">
+                        <StackPanel x:Name="VerdictPanel" Spacing="6" Visibility="Collapsed">
+                            <TextBlock x:Name="VerdictSummary" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <ItemsControl x:Name="VerdictAnswers">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock FontSize="13" Margin="0,1">
+                                            <Run Text="{Binding Label}" Foreground="Gray"/><Run Text="  "/><Run Text="{Binding Value}"/>
+                                        </TextBlock>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock x:Name="VerdictMeta" FontSize="12" Foreground="Gray"/>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
+                               Text="分析流程：读取会话最近上下文 → 以对方最新一条消息为焦点判读 → 结论入待写队列 → 微信退出后自动写回为引用消息。消息原文不在此展示，完整判读记录见「判读历史」。"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</Page>

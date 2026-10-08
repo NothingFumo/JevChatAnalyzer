@@ -9,7 +9,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        ContentFrame.Navigate(typeof(ChatPage));
+        ContentFrame.Navigate(typeof(AnalyzePage));
         Nav.SelectedItem = Nav.MenuItems[0];
     }
 
@@ -24,7 +24,7 @@ public sealed partial class MainWindow : Window
         {
             "history" => typeof(HistoryPage),
             "settings" => typeof(SettingsPage),
-            _ => typeof(ChatPage),
+            _ => typeof(AnalyzePage),
         });
     }
 }
