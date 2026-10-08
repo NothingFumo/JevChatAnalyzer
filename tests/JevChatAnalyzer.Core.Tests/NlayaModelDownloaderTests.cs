@@ -16,10 +16,14 @@ public class NlayaModelDownloaderTests
     }
 
     [Fact]
-    public void IsModelReady_空目录不抛异常()
+    public void IsModelReady_空目录不抛异常_空串回退默认目录()
     {
-        Assert.False(NlayaModelDownloader.IsModelReady(""));
-        Assert.False(NlayaModelDownloader.IsModelReady(null));
+        // 空串/null = 回退默认目录（本机可能已下载模型，只断言不抛异常）
+        NlayaModelDownloader.IsModelReady("");
+        NlayaModelDownloader.IsModelReady(null);
+
+        // 明确的空目录 → false
+        Assert.False(NlayaModelDownloader.IsModelReady(Path.Combine(Path.GetTempPath(), "jca-empty-" + Guid.NewGuid().ToString("N"))));
     }
 
     [Fact]

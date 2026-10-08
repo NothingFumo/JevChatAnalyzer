@@ -1,3 +1,4 @@
+using JevChatAnalyzer.Core.Draft;
 using JevChatAnalyzer.Core.Messages;
 
 namespace JevChatAnalyzer.Core.Judge;
@@ -53,6 +54,67 @@ public sealed class JudgeService
             Focus = new JudgeTurn(focus.SenderDisplayName, focus.DisplayText, focus.IsMine),
             FocusQuote = focus.Quote is { } q ? $"{q.FromDisplayName}：{q.Content}" : null,
         };
+    }
+
+    /// <summary>
+    /// 候选回复重排序（三段式第三段）：
+    /// 单道 choice 题（选项 = 各候选），结合对话与判读上下文选最优，
+    /// 选中项置顶。全部后端失败时抛 JudgeException，调用方回退原顺序。
+    /// </summary>
+    public async Task<IReadOnlyList<DraftSuggestion>> RerankCandidatesAsync(
+        JudgeRequest request, IReadOnlyList<DraftSuggestion> candidates,
+        string? preferredBackend = null, CancellationToken ct = default)
+    {
+        if (candidates.Count < 2)
+        {
+            return candidates;
+        }
+        var spec = new QuestionSpec(
+            "best_reply", "choice", "结合对话与判读结论，哪条回复最合适？",
+            candidates.Select((c, i) => ($"候选{i + 1}", c.Text)).ToArray());
+        var state = JudgeQuestions.BuildState(request);
+        state["候选回复"] = System.Text.Json.Nodes.JsonNode.Parse(
+            System.Text.Json.JsonSerializer.Serialize(
+                candidates.Select((c, i) => new { id = $"候选{i + 1}", text = c.Text }))) ?? throw new InvalidOperationException();
+
+        var ordered = OrderedCandidates(preferredBackend).ToList();
+        Exception? lastError = null;
+        foreach (var (name, backend) in ordered)
+        {
+            var breaker = _breakers[name];
+            if (breaker.IsOpen)
+            {
+                lastError ??= new JudgeException($"{name} 熔断中。");
+                continue;
+            }
+            try
+            {
+                var answers = await backend.AskAsync(state, new[] { spec }, ct);
+                if (answers.TryGetValue(spec.Id, out var answer) && answer.Label is { } label)
+                {
+                    var idx = int.TryParse(label.Replace("候选", ""), out var n) ? n - 1 : -1;
+                    if (idx >= 0 && idx < candidates.Count)
+                    {
+                        breaker.RecordSuccess();
+                        var result = new List<DraftSuggestion> { candidates[idx] };
+                        result.AddRange(candidates.Where((_, i) => i != idx));
+                        return result;
+                    }
+                }
+                breaker.RecordSuccess();
+                return candidates; // 后端未给出有效选择，保持原序
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception e)
+            {
+                breaker.RecordFailure();
+                lastError = e;
+            }
+        }
+        throw new JudgeException("重排序失败：全部判读后端不可用。", lastError);
     }
 
     /// <summary>执行判读：熔断快速失败 → 选定后端 → 失败降级到任一可用后端。</summary>

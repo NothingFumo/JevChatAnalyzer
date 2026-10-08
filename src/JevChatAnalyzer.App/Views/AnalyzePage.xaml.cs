@@ -162,6 +162,12 @@ public sealed partial class AnalyzePage : Page
                     InfoBarSeverity.Warning);
                 return;
             }
+            if (outcome.Verdict.BackendName == "盲起草")
+            {
+                SetStatus("判读后端全部不可用，已盲起草兜底（未经判读校准，未写回数据库）。" +
+                          "候选见「起草回复」。", InfoBarSeverity.Warning);
+                return;
+            }
             SetStatus(outcome.Enqueued
                 ? "判读完成，已加入待写队列——微信完全退出后将自动写入为引用消息（可随时撤销/还原）。"
                 : "判读完成（自动写回已在设置中关闭）。", InfoBarSeverity.Success);
@@ -199,6 +205,15 @@ public sealed partial class AnalyzePage : Page
             var request = JudgeService.BuildRequest(
                 messages, _lastOutcome.Focus, _currentSession.DisplayName, _currentSession.Kind == SessionKind.Group);
             var suggestions = await client.DraftAsync(request, _lastOutcome.Verdict);
+            // 候选重排序（三段式第三段）：判读引擎选出最合适的一条置顶
+            try
+            {
+                suggestions = await state.Judge.RerankCandidatesAsync(request, suggestions);
+            }
+            catch
+            {
+                // 重排序失败保持原顺序（候选仍可用）
+            }
 
             var dialog = new ContentDialog
             {

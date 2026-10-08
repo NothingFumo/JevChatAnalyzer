@@ -14,6 +14,13 @@ public interface IJudgeBackend : IAsyncDisposable
     /// <summary>执行一次判读。实现自行处理超时；异常即视为本次失败（交给上层熔断）。</summary>
     Task<JudgeVerdict> JudgeAsync(JudgeRequest request, CancellationToken ct);
 
+    /// <summary>
+    /// 通用单题组问答（如候选回复重排序）：state + 任意题目组 → 题目 id → 答案。
+    /// 与判读题库解耦，供管线扩展复用后端连接。
+    /// </summary>
+    Task<IReadOnlyDictionary<string, JudgeAnswer>> AskAsync(object state, IReadOnlyList<QuestionSpec> specs,
+        CancellationToken ct);
+
     /// <summary>可用性探测（轻量，如健康检查或已初始化标记）。</summary>
     Task<bool> IsAvailableAsync(CancellationToken ct);
 }

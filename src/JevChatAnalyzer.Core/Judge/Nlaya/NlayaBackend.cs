@@ -111,6 +111,49 @@ public sealed class NlayaBackend : IJudgeBackend
         return questions;
     }
 
+    /// <summary>通用单题组问答（重排序等管线扩展）。</summary>
+    public Task<IReadOnlyDictionary<string, JudgeAnswer>> AskAsync(object state,
+        IReadOnlyList<QuestionSpec> specs, CancellationToken ct)
+    {
+        var agent = Agent;
+        var questions = new Questions();
+        foreach (var spec in specs)
+        {
+            switch (spec.Kind)
+            {
+                case "choice":
+                    questions = questions.Choice(spec.Id, spec.Instructions,
+                        spec.Options!.Select(o => (o.Label, o.Description)));
+                    break;
+                case "score":
+                    questions = questions.Score(spec.Id, spec.Instructions, spec.Levels!);
+                    break;
+                default:
+                    questions = questions.Noul(spec.Id, spec.Instructions, _ => { });
+                    break;
+            }
+        }
+        var stateJson = System.Text.Json.JsonSerializer.Serialize(state);
+        var result = agent.Predict(stateJson, questions, new PredictOptions());
+        var answers = new Dictionary<string, JudgeAnswer>();
+        foreach (var spec in specs)
+        {
+            if (!result.TryGet(spec.Id, out var answer) || answer is null)
+            {
+                continue;
+            }
+            answers[spec.Id] = spec.Kind switch
+            {
+                "choice" => new JudgeAnswer("choice", result.Choice(spec.Id).Choice,
+                    0, result.Choice(spec.Id).Confidence),
+                "score" => new JudgeAnswer("score", null, result.Score(spec.Id).Score,
+                    result.Score(spec.Id).Confidence),
+                _ => HandleNoul(result, spec.Id),
+            };
+        }
+        return Task.FromResult<IReadOnlyDictionary<string, JudgeAnswer>>(answers);
+    }
+
     public Task<bool> IsAvailableAsync(CancellationToken ct) =>
         Task.FromResult(IsModelDownloaded);
 

@@ -67,10 +67,11 @@ public sealed class AnalysisPipeline
 
     /// <summary>
     /// 分析一个会话（焦点 = 对方最新可分析消息）。enqueue=true 时判读结论入待写队列。
+    /// blindFallback=true：判读后端全挂时降级「盲起草」（无判读校准，不写回数据库）。
     /// 返回 null 表示没有可分析的对方消息。
     /// </summary>
     public async Task<AnalysisOutcome?> AnalyzeAsync(AppState state, ChatSession session,
-        bool enqueue, CancellationToken ct = default)
+        bool enqueue, bool blindFallback = true, CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct);
         try
@@ -91,7 +92,34 @@ public sealed class AnalysisPipeline
 
             var request = JudgeService.BuildRequest(
                 messages, focus, session.DisplayName, session.Kind == SessionKind.Group);
-            var verdict = await state.Judge.JudgeAsync(request, ct: ct);
+            JudgeVerdict verdict;
+            try
+            {
+                verdict = await state.Judge.JudgeAsync(request, ct: ct);
+            }
+            catch (JudgeException) when (blindFallback && state.Settings.DraftEnabled &&
+                                          !string.IsNullOrWhiteSpace(state.Settings.DraftEndpoint))
+            {
+                // 盲起草兜底：无判读校准，不写回数据库
+                var options = new Draft.DraftOptions
+                {
+                    Endpoint = new Uri(state.Settings.DraftEndpoint),
+                    ApiKey = Environment.GetEnvironmentVariable("LLM_API_KEY"),
+                    Model = state.Settings.DraftModel,
+                    CandidateCount = 3,
+                };
+                var client = new Draft.DraftClient(options);
+                var (suggestions, summary) = await client.BlindDraftAsync(request, ct);
+                verdict = new JudgeVerdict
+                {
+                    BackendName = "盲起草",
+                    Model = state.Settings.DraftModel,
+                    JudgedAt = DateTimeOffset.Now,
+                    Answers = new Dictionary<string, JudgeAnswer>(),
+                    Summary = summary,
+                };
+                state.BlindDraftResult = suggestions;
+            }
             _analyzed.Add(key);
 
             state.History.Add(new HistoryRecord
@@ -108,7 +136,7 @@ public sealed class AnalysisPipeline
             });
 
             var enqueued = false;
-            if (enqueue && state.Settings.AutoWriteEnabled)
+            if (enqueue && state.Settings.AutoWriteEnabled && verdict.BackendName != "盲起草")
             {
                 state.WriteBack.EnqueuePending(state.CurrentWxId!, session.SessionId,
                     focus, verdict, quoteText: verdict.Summary);

@@ -51,12 +51,19 @@ public sealed class DraftClient
     public async Task<IReadOnlyList<DraftSuggestion>> DraftAsync(JudgeRequest request, JudgeVerdict verdict, CancellationToken ct = default)
     {
         var prompt = BuildPrompt(request, verdict, _options.CandidateCount);
+        var content = await CompleteAsync(prompt, ct);
+        return ParseCandidates(content, _options.CandidateCount);
+    }
+
+    /// <summary>发起一次 chat/completions 并返回首条文本（起草与盲起草共用）。</summary>
+    private async Task<string> CompleteAsync(string prompt, CancellationToken ct)
+    {
         var body = new
         {
             model = _options.Model,
             messages = new object[]
             {
-                new { role = "system", content = "你是聊天回复助手。根据对话上下文与判读结论，写出可直接发送的回复。只输出回复本身，不要解释、不要引号。" },
+                new { role = "system", content = "你是聊天回复助手。根据对话上下文，写出可直接发送的回复。只输出回复本身，不要解释、不要引号。" },
                 new { role = "user", content = prompt },
             },
             temperature = 0.8,
@@ -93,8 +100,42 @@ public sealed class DraftClient
             {
                 throw new DraftException("起草接口返回空内容。");
             }
-            return ParseCandidates(content, _options.CandidateCount);
+            return content;
         }
+    }
+
+    /// <summary>
+    /// 盲起草（判读后端全挂时的兜底）：
+    /// 不带判读小抄，直接让起草模型按上下文给出候选并附一句话对话判断。
+    /// 返回 (候选列表, 判断结论)。
+    /// </summary>
+    public async Task<(IReadOnlyList<DraftSuggestion> Suggestions, string Summary)> BlindDraftAsync(
+        JudgeRequest request, CancellationToken ct = default)
+    {
+        var prompt = BuildBlindPrompt(request, _options.CandidateCount);
+        var content = await CompleteAsync(prompt, ct);
+        var lines = content.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var suggestions = ParseCandidates(content, _options.CandidateCount);
+        var summary = lines.FirstOrDefault(l => l.StartsWith("判断：") || l.StartsWith("判断:"))?.Trim()
+                      ?? "盲起草（判读后端不可用，未经判读校准）";
+        return (suggestions, summary);
+    }
+
+    /// <summary>盲起草提示词：只有上下文与输出格式要求（无判读小抄）。</summary>
+    internal static string BuildBlindPrompt(JudgeRequest request, int candidateCount)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"【会话】{(request.IsGroup ? $"群聊「{request.SessionTitle}」" : $"与「{request.SessionTitle}」的单聊")}");
+        sb.AppendLine("【最近对话】");
+        foreach (var turn in request.Turns.TakeLast(12))
+        {
+            sb.AppendLine($"{turn.Speaker}: {turn.Text}");
+        }
+        sb.AppendLine("【要回复的消息】");
+        sb.AppendLine($"{request.Focus.Speaker}: {request.Focus.Text}");
+        sb.AppendLine($"【要求】判断对方意图并给出 {candidateCount} 条候选回复。" +
+                      "每条候选一行，以「1.」「2.」「3.」开头；最后一行以「判断：」开头给一句话结论（对方意图与建议动作）。");
+        return sb.ToString();
     }
 
     /// <summary>把判读小抄 + 上下文折成起草提示词。</summary>

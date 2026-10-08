@@ -155,6 +155,20 @@ public class JudgeTests
             });
         }
 
+        public Task<IReadOnlyDictionary<string, JudgeAnswer>> AskAsync(object state,
+            IReadOnlyList<QuestionSpec> specs, CancellationToken ct)
+        {
+            // 测试桩：按 specs 的第一题返回确定性答案（choice 取第一个选项）
+            var answers = new Dictionary<string, JudgeAnswer>();
+            foreach (var spec in specs)
+            {
+                answers[spec.Id] = spec.Kind == "choice" && spec.Options is { Length: > 0 } opts
+                    ? new JudgeAnswer("choice", opts[0].Label, 1, 1)
+                    : new JudgeAnswer("noul", "否", 0, 0.5);
+            }
+            return Task.FromResult<IReadOnlyDictionary<string, JudgeAnswer>>(answers);
+        }
+
         public Task<bool> IsAvailableAsync(CancellationToken ct) => Task.FromResult(true);
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

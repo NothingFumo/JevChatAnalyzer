@@ -1,3 +1,4 @@
+using JevChatAnalyzer.Core.Draft;
 using JevChatAnalyzer.Core.History;
 using JevChatAnalyzer.Core.Judge;
 using JevChatAnalyzer.Core.Keys;
@@ -27,6 +28,9 @@ public sealed class AppState
     public JudgeService Judge { get; private set; } = new();
 
     public AnalysisPipeline Pipeline { get; } = new();
+
+    /// <summary>最近一次盲起草的候选（判读后端全挂时的兜底产物，供「起草回复」查看）。</summary>
+    public IReadOnlyList<DraftSuggestion>? BlindDraftResult { get; set; }
     public MessageMonitor? Monitor { get; private set; }
 
     /// <summary>监听状态变化（UI 状态行）。线程池线程触发。</summary>
