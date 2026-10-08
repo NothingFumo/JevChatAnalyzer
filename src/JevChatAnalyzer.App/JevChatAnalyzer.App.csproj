@@ -8,8 +8,9 @@
     <Platforms>x64</Platforms>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
-    <EnableMsixTooling>true</EnableMsixTooling>
-    <!-- 默认免安装运行；打包 MSIX 用 -p:PackAsMsix=true（scripts/make-msix.ps1） -->
+    <!-- 默认免安装运行（VS F5 直接启动 exe）；打包 MSIX 用 -p:PackAsMsix=true（scripts/make-msix.ps1） -->
+    <EnableMsixTooling Condition="'$(PackAsMsix)' != 'true'">false</EnableMsixTooling>
+    <EnableMsixTooling Condition="'$(PackAsMsix)' == 'true'">true</EnableMsixTooling>
     <WindowsPackageType Condition="'$(PackAsMsix)' != 'true'">None</WindowsPackageType>
     <WindowsPackageType Condition="'$(PackAsMsix)' == 'true'">MSIX</WindowsPackageType>
     <Nullable>enable</Nullable>
