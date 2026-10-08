@@ -11,6 +11,24 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        // 全局异常日志：任何未处理异常写入 crash.log（不再无声闪退）
+        UnhandledException += (_, e) =>
+        {
+            try
+            {
+                var dir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "JevChatAnalyzer");
+                Directory.CreateDirectory(dir);
+                File.AppendAllText(Path.Combine(dir, "crash.log"),
+                    $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss}] {e.Message}\n{e.Exception}\n\n");
+            }
+            catch
+            {
+                // 日志失败不能再次抛出
+            }
+            e.Handled = true; // 记录后继续运行，避免闪退
+        };
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)

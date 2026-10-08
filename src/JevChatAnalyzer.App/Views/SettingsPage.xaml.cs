@@ -44,6 +44,13 @@ public sealed partial class SettingsPage : Page
 
     private void TabList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        // XAML 中首项 IsSelected="True" 会在解析期触发本事件，此时各分区元素尚未创建，
+        // 必须判空（否则点开设置页直接闪退）
+        if (TabList is null || PaneKeys is null || PaneJudge is null || PaneModels is null ||
+            PaneVoice is null || PanePrivacy is null || PaneAbout is null)
+        {
+            return;
+        }
         if (TabList.SelectedItem is not ListViewItem item)
         {
             return;
