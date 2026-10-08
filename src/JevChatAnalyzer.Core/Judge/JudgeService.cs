@@ -117,22 +117,26 @@ public sealed class JudgeService
         throw new JudgeException("重排序失败：全部判读后端不可用。", lastError);
     }
 
-    /// <summary>执行判读：熔断快速失败 → 选定后端 → 失败降级到任一可用后端。</summary>
+    /// <summary>执行判读：熔断快速失败 → 选定后端 → 失败降级到任一可用后端。
+    /// 全部失败时异常消息逐后端列出原因，便于定位（缺 key / 熔断 / 网络等）。</summary>
     public async Task<JudgeVerdict> JudgeAsync(JudgeRequest request, string? preferredBackend = null, CancellationToken ct = default)
     {
         var candidates = OrderedCandidates(preferredBackend).ToList();
         if (candidates.Count == 0)
         {
-            throw new InvalidOperationException("没有可用的判读后端。请在设置中配置云端 API 或部署本地 laya。");
+            throw new InvalidOperationException(
+                "没有可用的判读后端。请在设置中配置：\n" +
+                "- 云端：设置环境变量 CLOUD_API_KEY（云端服务 判读）\n" +
+                "- 本地：设置 → 本地引擎模型 → 下载 laya 模型（离线可用）");
         }
+        var failures = new List<string>();
         Exception? lastError = null;
         foreach (var (name, backend) in candidates)
         {
             var breaker = _breakers[name];
             if (breaker.IsOpen)
             {
-                lastError ??= new InvalidOperationException(
-                    $"{name} 熔断中（{breaker.RemainingCooldownSeconds}s 后重试）。");
+                failures.Add($"{name}：熔断中（{breaker.RemainingCooldownSeconds}s 后自动重试）");
                 continue;
             }
             try
@@ -148,10 +152,12 @@ public sealed class JudgeService
             catch (Exception e)
             {
                 breaker.RecordFailure();
+                failures.Add($"{name}：{e.Message}");
                 lastError = e;
             }
         }
-        throw new JudgeException("全部判读后端失败。", lastError);
+        throw new JudgeException(
+            "全部判读后端失败：\n" + string.Join("\n", failures.Select(f => $"- {f}")), lastError);
     }
 
     private IEnumerable<(string, IJudgeBackend)> OrderedCandidates(string? preferred)

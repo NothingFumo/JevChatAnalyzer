@@ -143,7 +143,9 @@ public sealed partial class SettingsPage : Page
             });
             var dir = await NlayaModelDownloader.DownloadAsync(
                 AppState.Instance.Settings.NlayaModelDir, progress, _layaDownloadCts.Token);
-            LayaModelStatus.Text = $"模型已就绪：{dir}";
+            LayaModelStatus.Text = $"模型已就绪：{dir}——本地判读后端已注册。";
+            // 模型下载完成后立即注册本地后端（无需重启应用）
+            AppState.Instance.RebuildJudgeService();
         }
         catch (OperationCanceledException)
         {
