@@ -35,9 +35,21 @@ public class NlayaModelDownloaderTests
     [Fact]
     public async Task DownloadAsync_全部源失败时给出聚合错误()
     {
-        // 空仓库目录不可能有任何文件 → 验证异常消息含源主机列表（不再裸抛 401）
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            NlayaModelDownloader.DownloadAsync(Path.Combine(Path.GetTempPath(), "jca-dl-" + Guid.NewGuid().ToString("N"))));
-        Assert.Contains("已尝试", ex.Message);
+        // 注入全部不可达的源 → 验证异常消息含源主机列表（不依赖真实网络）
+        var original = NlayaModelDownloader.BaseUrlsSource;
+        NlayaModelDownloader.BaseUrlsSource = () => ["http://127.0.0.1:9"];
+        try
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "jca-dl-" + Guid.NewGuid().ToString("N"));
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                NlayaModelDownloader.DownloadAsync(dir));
+            Assert.Contains("已尝试", ex.Message);
+            Assert.Contains("127.0.0.1", ex.Message);
+            Assert.False(NlayaModelDownloader.IsModelReady(dir));
+        }
+        finally
+        {
+            NlayaModelDownloader.BaseUrlsSource = original;
+        }
     }
 }

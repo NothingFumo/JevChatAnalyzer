@@ -115,6 +115,7 @@
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button x:Name="DownloadLayaButton" Click="DownloadLaya_Click" Style="{StaticResource AccentButtonStyle}">下载模型</Button>
                         <Button x:Name="CancelLayaButton" Click="CancelLaya_Click" IsEnabled="False">取消</Button>
+                        <Button Click="OpenLayaModelDir_Click">打开模型目录</Button>
                     </StackPanel>
                     <ProgressBar x:Name="LayaProgress" Maximum="100" Value="0"/>
                     <TextBlock x:Name="LayaModelStatus" Foreground="Gray" TextWrapping="Wrap"/>
@@ -126,8 +127,13 @@
                     <ToggleSwitch x:Name="VoiceSwitch" OnContent="启用语音消息转写" OffContent="语音转写：关"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Text="SenseVoiceSmall int8（约 245MB，modelscope 下载）+ 微信同源 Silk 解码，全程本地推理。"/>
+                    <StackPanel Spacing="4">
+                        <TextBlock>模型目录（空 = 文档\JevChatAnalyzer\models\sensevoice，修改需重启）</TextBlock>
+                        <TextBox x:Name="VoiceModelDirBox"/>
+                    </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button x:Name="DownloadVoiceButton" Click="DownloadVoice_Click" Style="{StaticResource AccentButtonStyle}">下载语音模型</Button>
+                        <Button Click="OpenVoiceModelDir_Click">打开模型目录</Button>
                     </StackPanel>
                     <ProgressBar x:Name="VoiceProgress" Maximum="100" Value="0"/>
                     <TextBlock x:Name="VoiceModelStatus" Foreground="Gray" TextWrapping="Wrap"/>

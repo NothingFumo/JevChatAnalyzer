@@ -13,11 +13,7 @@ public sealed record VoiceModelFiles(string ModelPath, string TokensPath)
     public bool Exists => File.Exists(ModelPath) && File.Exists(TokensPath);
 }
 
-/// <summary>模型下载进度。</summary>
-public sealed record DownloadProgress(string FileName, long BytesReceived, long? TotalBytes)
-{
-    public double? Percent => TotalBytes is > 0 ? BytesReceived * 100.0 / TotalBytes : null;
-}
+// 下载进度统一使用 JevChatAnalyzer.Core.Net.DownloadProgress（含速度）。
 
 /// <summary>
 /// 语音转写：sherpa-onnx SenseVoiceSmall（int8），模型按需下载（modelscope 优先，HF 兜底），
@@ -47,12 +43,19 @@ public sealed class VoiceTranscriber : IDisposable
 
     public VoiceTranscriber(string? modelDir = null, string? cachePath = null)
     {
-        _modelDir = modelDir ?? Path.Combine(
+        // 默认目录：文档\JevChatAnalyzer\models\sensevoice；旧 %LOCALAPPDATA% 已下载文件自动迁移
+        var legacy = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "JevChatAnalyzer", DefaultModelDirName);
+        _modelDir = string.IsNullOrWhiteSpace(modelDir)
+            ? ModelDirs.Migrate(ModelDirs.SenseVoice(), legacy, "model.int8.onnx", "tokens.txt")
+            : modelDir;
         _cachePath = cachePath ?? Path.Combine(_modelDir, "transcripts.json");
         LoadCache();
     }
+
+    /// <summary>进行中下载的去重表（同一目录只允许一个下载任务，重复调用复用同一条）。</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, System.Threading.Tasks.Task> RunningDownloads = new();
 
     public VoiceModelFiles ModelFiles => new(
         Path.Combine(_modelDir, "model.int8.onnx"),
@@ -65,7 +68,10 @@ public sealed class VoiceTranscriber : IDisposable
     /// 下载模型（已就绪时直接返回）。文件按序下载到临时名，成功后改名；
     /// 取消令牌可中断。progress 回调线程池线程上触发。
     /// </summary>
-    public async Task DownloadModelAsync(CancellationToken ct = default, IProgress<DownloadProgress>? progress = null)
+    public Task DownloadModelAsync(CancellationToken ct = default, IProgress<DownloadProgress>? progress = null) =>
+        RunningDownloads.GetOrAdd(_modelDir, _ => RunDownloadAsync(ct, progress));
+
+    private async Task RunDownloadAsync(CancellationToken ct, IProgress<DownloadProgress>? progress)
     {
         Directory.CreateDirectory(_modelDir);
         // 每个目标文件按源顺序尝试：modelscope → huggingface → hf-mirror
@@ -81,12 +87,24 @@ public sealed class VoiceTranscriber : IDisposable
             {
                 continue;
             }
+            // 权重进度：model 占 80%，tokens 占 20%
+            var weight = target == "model.int8.onnx" ? 80.0 : 20.0;
+            var baseBytes = target == "model.int8.onnx" ? 0L : await SafeSizeAsync(Path.Combine(_modelDir, "model.int8.onnx")) ?? 0L;
+            var weighted = progress is null ? null : new Progress<DownloadProgress>(p =>
+                progress.Report(new DownloadProgress(p.FileName,
+                    baseBytes + (long)(p.BytesReceived * weight / 100.0),
+                    p.TotalBytes is { } t ? baseBytes + (long)(t * weight / 100.0) : null)
+                {
+                    SpeedBytesPerSecond = p.SpeedBytesPerSecond,
+                }));
             var errors = new List<string>();
             foreach (var source in sources)
             {
                 try
                 {
-                    await HttpDownload.DownloadAsync(source, dest, ct, progress);
+                    var referer = source.Contains("modelscope", StringComparison.OrdinalIgnoreCase)
+                        ? "https://modelscope.cn/" : null;
+                    await HttpDownload.DownloadAsync(source, dest, ct, weighted, referer);
                     errors.Clear();
                     break;
                 }
@@ -189,6 +207,19 @@ public sealed class VoiceTranscriber : IDisposable
         catch (IOException)
         {
             // 缓存写失败不影响转写结果
+        }
+    }
+
+    private static async Task<long?> SafeSizeAsync(string path)
+    {
+        try
+        {
+            var fi = new FileInfo(path);
+            return fi.Exists ? fi.Length : null;
+        }
+        catch (IOException)
+        {
+            return null;
         }
     }
 

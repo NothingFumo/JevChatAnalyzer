@@ -22,6 +22,9 @@ public sealed class AppSettings
     /// <summary>NLaya 进程内引擎：模型目录（空 = 默认缓存目录）。</summary>
     public string NlayaModelDir { get; set; } = "";
 
+    /// <summary>语音模型目录（空 = 文档\JevChatAnalyzer\models\sensevoice）。</summary>
+    public string VoiceModelDir { get; set; } = "";
+
     public bool NlayaEnabled { get; set; } = true;
 
     /// <summary>本地 HTTP 服务 HTTP 兜底是否参与后端选择。</summary>

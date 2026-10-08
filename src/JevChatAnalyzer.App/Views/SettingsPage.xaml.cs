@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Windows.Storage.Pickers;
 using JevChatAnalyzer.App.Services;
 using JevChatAnalyzer.Core.Judge.NlayaJudge;
+using JevChatAnalyzer.Core.Net;
 using JevChatAnalyzer.Core.Keys;
 using JevChatAnalyzer.Core.Voice;
 
@@ -34,6 +35,7 @@ public sealed partial class SettingsPage : Page
         CloudSanitizeSwitch.IsOn = s.CloudSanitize;
         LayaServerBox.Text = s.LayaServerUrl;
         VoiceSwitch.IsOn = s.VoiceEnabled;
+        VoiceModelDirBox.Text = s.VoiceModelDir;
         MonitorSwitch.IsOn = s.MonitorEnabled;
         MonitorIntervalBox.Text = s.MonitorIntervalSeconds.ToString();
         ContextTurnsBox.Text = s.ContextTurns.ToString();
@@ -42,7 +44,7 @@ public sealed partial class SettingsPage : Page
 
         var transcriber = AppState.Instance.Transcriber;
         VoiceModelStatus.Text = transcriber.IsModelReady
-            ? $"模型已就绪：{transcriber.ModelFiles.ModelPath}"
+            ? $"模型已就绪：{transcriber.ModelFiles.ModelPath}（{FormatSize(new FileInfo(transcriber.ModelFiles.ModelPath).Length)}）"
             : "模型未下载。";
     }
 
@@ -136,7 +138,8 @@ public sealed partial class SettingsPage : Page
                     LayaProgress.Value = pct;
                 }
                 LayaModelStatus.Text = $"{p.FileName}: {p.BytesReceived / 1024 / 1024}MB" +
-                                       (p.TotalBytes is { } t ? $" / {t / 1024 / 1024}MB" : "");
+                                       (p.TotalBytes is { } t ? $" / {t / 1024 / 1024}MB" : "") +
+                                       (p.SpeedBytesPerSecond is { } sp && sp > 0 ? $"（{FormatSize(sp)}/s）" : "");
             });
             var dir = await NlayaModelDownloader.DownloadAsync(
                 AppState.Instance.Settings.NlayaModelDir, progress, _layaDownloadCts.Token);
@@ -157,6 +160,28 @@ public sealed partial class SettingsPage : Page
         }
     }
 
+    private async void OpenVoiceModelDir_Click(object sender, RoutedEventArgs e)
+    {
+        var dir = System.IO.Path.GetDirectoryName(AppState.Instance.Transcriber.ModelFiles.ModelPath)!;
+        System.IO.Directory.CreateDirectory(dir);
+        await Windows.System.Launcher.LaunchFolderPathAsync(dir);
+    }
+
+    private async void OpenLayaModelDir_Click(object sender, RoutedEventArgs e)
+    {
+        var dir = NlayaModelDownloader.ResolveDirectory(AppState.Instance.Settings.NlayaModelDir);
+        System.IO.Directory.CreateDirectory(dir);
+        await Windows.System.Launcher.LaunchFolderPathAsync(dir);
+    }
+
+    private static string FormatSize(double bytes) => bytes switch
+    {
+        >= 1024 * 1024 * 1024 => $"{bytes / 1024 / 1024 / 1024:0.0}GB",
+        >= 1024 * 1024 => $"{bytes / 1024 / 1024:0.0}MB",
+        >= 1024 => $"{bytes / 1024:0}KB",
+        _ => $"{bytes:0}B",
+    };
+
     private void CancelLaya_Click(object sender, RoutedEventArgs e) => _layaDownloadCts?.Cancel();
 
     private async void DownloadVoice_Click(object sender, RoutedEventArgs e)
@@ -171,7 +196,8 @@ public sealed partial class SettingsPage : Page
                 {
                     VoiceProgress.Value = pct;
                 }
-                VoiceModelStatus.Text = $"{p.FileName}: {p.BytesReceived / 1024 / 1024}MB";
+                VoiceModelStatus.Text = $"{p.FileName}: {p.BytesReceived / 1024 / 1024}MB" +
+                    (p.SpeedBytesPerSecond is { } sp && sp > 0 ? $"（{FormatSize(sp)}/s）" : "");
             });
             await AppState.Instance.Transcriber.DownloadModelAsync(_voiceDownloadCts.Token, progress);
             VoiceModelStatus.Text = $"模型已就绪：{AppState.Instance.Transcriber.ModelFiles.ModelPath}";
@@ -228,6 +254,7 @@ public sealed partial class SettingsPage : Page
         s.MonitorIntervalSeconds = Math.Max(2, int.TryParse(MonitorIntervalBox.Text.Trim(), out var iv) ? iv : 5);
         s.ContextTurns = Math.Clamp(int.TryParse(ContextTurnsBox.Text.Trim(), out var ctx) ? ctx : 20, 1, 200);
         s.MonitorSessions = MonitorSessionsBox.Text.Trim();
+        s.VoiceModelDir = VoiceModelDirBox.Text.Trim();
         // 监听配置热生效：重启监听（已打开数据时）
         if (s.MonitorEnabled && AppState.Instance.Chat is not null)
         {

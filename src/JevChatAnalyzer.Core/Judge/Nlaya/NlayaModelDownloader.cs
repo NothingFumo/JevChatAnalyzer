@@ -33,16 +33,28 @@ public static class NlayaModelDownloader
         "tokenizer/tokenizer_config.json",
     ];
 
-    public static string DefaultDirectory() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "JevChatAnalyzer", "models", "laya-multilingual");
+    public static string DefaultDirectory()
+    {
+        var legacy = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "JevChatAnalyzer", "models", "laya-multilingual");
+        return ModelDirs.Migrate(ModelDirs.LayaMultilingual(), legacy, Files);
+    }
+
+    /// <summary>进行中下载的去重表（同一目录只允许一个下载任务）。</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, System.Threading.Tasks.Task> RunningDownloads = new();
 
     /// <summary>目录解析：null/空串/空白 → 默认目录（设置项允许留空）。</summary>
     public static string ResolveDirectory(string? dir) =>
         string.IsNullOrWhiteSpace(dir) ? DefaultDirectory() : dir;
 
+    /// <summary>源序列工厂（测试可注入，默认真实源）。</summary>
+    internal static Func<IReadOnlyList<string>> BaseUrlsSource { get; set; } = RealBaseUrls;
+
     /// <summary>下载源基址序列（按优先级）。</summary>
-    public static IReadOnlyList<string> BaseUrls()
+    public static IReadOnlyList<string> BaseUrls() => BaseUrlsSource();
+
+    private static IReadOnlyList<string> RealBaseUrls()
     {
         var list = new List<string>();
         var endpoint = Environment.GetEnvironmentVariable("HF_ENDPOINT");
@@ -64,11 +76,17 @@ public static class NlayaModelDownloader
 
     private static bool IsReadyFile(string path) => File.Exists(path) && new FileInfo(path).Length > 0;
 
-    /// <summary>下载 checkpoint。已就绪时直接返回。单文件失败自动换下一个源。</summary>
-    public static async Task<NlayaModelResult> DownloadAsync(
+    /// <summary>下载 checkpoint。已就绪时直接返回。单文件失败自动换下一个源。重复调用复用进行中的任务。</summary>
+    public static Task<NlayaModelResult> DownloadAsync(
         string? targetDir = null, IProgress<DownloadProgress>? progress = null, CancellationToken ct = default)
     {
         var root = ResolveDirectory(targetDir);
+        return (Task<NlayaModelResult>)RunningDownloads.GetOrAdd(root, _ => RunDownloadAsync(root, progress, ct));
+    }
+
+    private static async Task<NlayaModelResult> RunDownloadAsync(string root,
+        IProgress<DownloadProgress>? progress, CancellationToken ct)
+    {
         Directory.CreateDirectory(root);
         var bases = BaseUrls();
         var downloaded = new List<string>();
@@ -90,7 +108,9 @@ public static class NlayaModelDownloader
                 try
                 {
                     var url = $"{baseUrl}/{RepoId}/resolve/main/{rel}";
-                    await HttpDownload.DownloadAsync(url, dest, ct, progress);
+                    await HttpDownload.DownloadAsync(url, dest, ct, progress,
+                        referer: baseUrl.Contains("modelscope", StringComparison.OrdinalIgnoreCase)
+                            ? "https://modelscope.cn/" : null);
                     downloaded.Add(rel);
                     break;
                 }

@@ -18,7 +18,11 @@ public sealed class AppState
     public KeyVault KeyVault { get; } = new();
     public HistoryStore History { get; } = new();
     public WriteBackService WriteBack { get; } = new();
-    public VoiceTranscriber Transcriber { get; } = new();
+    private VoiceTranscriber? _transcriber;
+
+    /// <summary>语音转写器（目录取设置项，空 = 默认文档目录；修改需重启应用）。</summary>
+    public VoiceTranscriber Transcriber => _transcriber ??= new(
+        string.IsNullOrWhiteSpace(Settings.VoiceModelDir) ? null : Settings.VoiceModelDir);
 
     public JudgeService Judge { get; private set; } = new();
 

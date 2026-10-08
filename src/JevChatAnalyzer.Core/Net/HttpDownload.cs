@@ -2,29 +2,39 @@ using JevChatAnalyzer.Core.Voice;
 
 namespace JevChatAnalyzer.Core.Net;
 
-/// <summary>下载进度。</summary>
-public sealed record FileDownloadProgress(string FileName, long BytesReceived, long? TotalBytes)
+/// <summary>下载进度（含速度）。</summary>
+public sealed record DownloadProgress(string FileName, long BytesReceived, long? TotalBytes)
 {
     public double? Percent => TotalBytes is > 0 ? BytesReceived * 100.0 / TotalBytes : null;
+
+    /// <summary>当前速度（字节/秒）；单线程流式与分块下载均按秒采样。</summary>
+    public double? SpeedBytesPerSecond { get; init; }
 }
 
 /// <summary>
 /// 通用 HTTP 下载器：
-/// - 每次尝试使用唯一 .part 临时名（根治杀软/索引器/上轮残留导致的「文件被另一进程使用」）
-/// - 第 1 轮走系统代理，失败后第 2 轮直连（系统代理要求认证时所有主机都会 401，直连可解）
-/// - 浏览器 User-Agent；File.Move 带短暂重试（瞬时占用）
+/// - 探测：GET Range bytes=0-0 拿总大小 + Accept-Ranges（HttpClient 自动跟随重定向）
+/// - 大文件（≥2MB 且支持 Range）4 线程分块并行，按偏移写入同一 .part 文件；
+///   小文件/不支持 Range 回退单线程
+/// - 每次尝试唯一 .part 临时名；失败清理半成品
+/// - 第 1 轮走系统代理，失败第 2 轮直连（系统代理要求认证时所有主机都 401 的兜底）
+/// - 浏览器 UA + 可选 Referer（modelscope 防盗链）
+/// - 进度带每秒速度采样
 /// </summary>
 public static class HttpDownload
 {
+    private const long ChunkedThreshold = 2 * 1024 * 1024;
+    private const int ChunkThreads = 4;
+
     public static async Task DownloadAsync(string url, string destPath, CancellationToken ct,
-        IProgress<DownloadProgress>? progress = null)
+        IProgress<DownloadProgress>? progress = null, string? referer = null)
     {
         Exception? last = null;
         for (var attempt = 0; attempt < 2; attempt++)
         {
             try
             {
-                await CoreAsync(url, destPath, ct, progress, direct: attempt == 1);
+                await CoreAsync(url, destPath, ct, progress, referer, direct: attempt == 1);
                 return;
             }
             catch (OperationCanceledException)
@@ -40,42 +50,202 @@ public static class HttpDownload
     }
 
     private static async Task CoreAsync(string url, string destPath, CancellationToken ct,
-        IProgress<DownloadProgress>? progress, bool direct)
+        IProgress<DownloadProgress>? progress, string? referer, bool direct)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(destPath))!);
+        var tmp = $"{destPath}.{Guid.NewGuid():N}.part";
+        try
+        {
+            var probe = await ProbeAsync(url, ct, referer, direct);
+            if (probe.TotalSize >= ChunkedThreshold && probe.AcceptRanges)
+            {
+                await DownloadChunkedAsync(url, tmp, probe, ct, progress, referer, direct);
+            }
+            else
+            {
+                await DownloadSingleAsync(probe.FinalUrl, tmp, ct, progress, referer, direct);
+            }
+            await MoveWithRetry(tmp, destPath);
+        }
+        catch
+        {
+            TryDelete(tmp); // 失败清理半成品
+            throw;
+        }
+    }
+
+    // ── 探测：Range 0-0 拿总大小与分块支持 ──
+    private static async Task<ProbeResult> ProbeAsync(string url, CancellationToken ct,
+        string? referer, bool direct)
+    {
+        using var handler = new HttpClientHandler { UseProxy = !direct, AllowAutoRedirect = true };
+        using var http = BuildClient(handler);
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 0);
+        ApplyHeaders(request, referer);
+        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        response.EnsureSuccessStatusCode();
+
+        long total = 0;
+        var acceptRanges = false;
+        if (response.StatusCode == System.Net.HttpStatusCode.PartialContent)
+        {
+            var range = response.Content.Headers.ContentRange;
+            total = range?.Length ?? response.Content.Headers.ContentLength ?? 0;
+            acceptRanges = true;
+        }
+        else
+        {
+            total = response.Content.Headers.ContentLength ?? 0;
+        }
+        return new ProbeResult(total, acceptRanges, url);
+    }
+
+    private sealed record ProbeResult(long TotalSize, bool AcceptRanges, string FinalUrl);
+
+    // ── 4 线程分块并行 ──
+    private static async Task DownloadChunkedAsync(string url, string tmp, ProbeResult probe,
+        CancellationToken ct, IProgress<DownloadProgress>? progress, string? referer, bool direct)
+    {
+        var total = probe.TotalSize;
+        await using var file = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.Write, 1, useAsync: true);
+        file.SetLength(total);
+
+        var chunkSize = total / ChunkThreads + (total % ChunkThreads == 0 ? 0 : 1);
+        var downloadedTotal = 0L;
+        var lastReported = 0L;
+        var lastTime = DateTimeOffset.Now;
+        double speed = 0;
+        var gate = new object();
+
+        async Task DownloadChunk(int index)
+        {
+            var start = index * chunkSize;
+            var end = index == ChunkThreads - 1 ? total - 1 : (index + 1) * chunkSize - 1;
+            using var handler = new HttpClientHandler { UseProxy = !direct };
+            using var http = BuildClient(handler);
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(start, end);
+            ApplyHeaders(request, referer);
+            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            if (response.StatusCode != System.Net.HttpStatusCode.PartialContent)
+            {
+                throw new InvalidOperationException($"分块下载失败：HTTP {(int)response.StatusCode}");
+            }
+            await using var src = await response.Content.ReadAsStreamAsync(ct);
+            var buffer = new byte[1 << 17];
+            var offset = start;
+            int read;
+            while ((read = await src.ReadAsync(buffer, ct)) > 0)
+            {
+                System.IO.RandomAccess.Write(file.SafeFileHandle, buffer.AsSpan(0, read), offset);
+                offset += read;
+                lock (gate)
+                {
+                    downloadedTotal += read;
+                }
+            }
+        }
+
+        var reporter = Task.Run(async () =>
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(500, ct);
+                long current;
+                lock (gate)
+                {
+                    current = downloadedTotal;
+                }
+                var now = DateTimeOffset.Now;
+                var secs = (now - lastTime).TotalSeconds;
+                if (secs > 0.3)
+                {
+                    speed = (current - lastReported) / secs;
+                    lastReported = current;
+                    lastTime = now;
+                }
+                progress?.Report(new DownloadProgress(Path.GetFileName(tmp), current, total)
+                {
+                    SpeedBytesPerSecond = speed,
+                });
+            }
+        }, ct);
+
+        try
+        {
+            var chunks = Enumerable.Range(0, ChunkThreads).Select(DownloadChunk).ToArray();
+            await Task.WhenAll(chunks);
+            progress?.Report(new DownloadProgress(Path.GetFileName(tmp), total, total)
+            {
+                SpeedBytesPerSecond = 0,
+            });
+        }
+        finally
+        {
+            try
+            {
+                await reporter.WaitAsync(TimeSpan.FromSeconds(1), CancellationToken.None);
+            }
+            catch (Exception)
+            {
+            }
+        }
+    }
+
+    // ── 单线程流式（小文件 / 不支持 Range 回退）──
+    private static async Task DownloadSingleAsync(string url, string tmp, CancellationToken ct,
+        IProgress<DownloadProgress>? progress, string? referer, bool direct)
     {
         using var handler = new HttpClientHandler { UseProxy = !direct };
-        using var http = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(60) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 JevChatAnalyzer/1.0");
+        using var http = BuildClient(handler);
         using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
         var total = response.Content.Headers.ContentLength;
         await using var src = await response.Content.ReadAsStreamAsync(ct);
-
-        // 唯一临时名：任何进程（含上一次失败尝试/杀软）都不可能持有同一个文件
-        var tmp = $"{destPath}.{Guid.NewGuid():N}.part";
-        try
+        await using var dst = File.Create(tmp);
+        var buffer = new byte[1 << 17];
+        long received = 0;
+        var lastTime = DateTimeOffset.Now;
+        double speed = 0;
+        var lastReported = 0L;
+        int read;
+        while ((read = await src.ReadAsync(buffer, ct)) > 0)
         {
-            await using var dst = File.Create(tmp);
-            var buffer = new byte[1 << 18];
-            long received = 0;
-            var lastReport = DateTimeOffset.Now;
-            int read;
-            while ((read = await src.ReadAsync(buffer, ct)) > 0)
+            await dst.WriteAsync(buffer.AsMemory(0, read), ct);
+            received += read;
+            var now = DateTimeOffset.Now;
+            var secs = (now - lastTime).TotalSeconds;
+            if (secs > 0.5)
             {
-                await dst.WriteAsync(buffer.AsMemory(0, read), ct);
-                received += read;
-                if (progress is not null && (DateTimeOffset.Now - lastReport).TotalMilliseconds > 300)
-                {
-                    progress.Report(new DownloadProgress(Path.GetFileName(destPath), received, total));
-                    lastReport = DateTimeOffset.Now;
-                }
+                speed = (received - lastReported) / secs;
+                lastReported = received;
+                lastTime = now;
             }
-            progress?.Report(new DownloadProgress(Path.GetFileName(destPath), received, total));
-            await MoveWithRetry(tmp, destPath);
+            progress?.Report(new DownloadProgress(Path.GetFileName(tmp), received, total)
+            {
+                SpeedBytesPerSecond = speed,
+            });
         }
-        finally
+        progress?.Report(new DownloadProgress(Path.GetFileName(tmp), received, total)
         {
-            TryDelete(tmp);
+            SpeedBytesPerSecond = 0,
+        });
+    }
+
+    private static HttpClient BuildClient(HttpClientHandler handler)
+    {
+        var http = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(60) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        return http;
+    }
+
+    private static void ApplyHeaders(HttpRequestMessage request, string? referer)
+    {
+        if (!string.IsNullOrEmpty(referer))
+        {
+            request.Headers.Referrer = new Uri(referer);
         }
     }
 
