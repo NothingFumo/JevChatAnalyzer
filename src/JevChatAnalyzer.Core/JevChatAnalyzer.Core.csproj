@@ -11,6 +11,7 @@
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
     <PackageReference Include="ZstdSharp.Port" Version="0.8.8" />
 
+    <PackageReference Include="org.k2fsa.sherpa.onnx" Version="1.13.8" />
   </ItemGroup>
 
   <ItemGroup>
@@ -20,6 +21,7 @@
   <ItemGroup>
     <None Include="..\..\native\rwk\rwk.dll" Link="rwk.dll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\native\sqlcipher\sqlcipher.dll" Link="sqlcipher.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\native\silk\silk_decoder.dll" Link="silk_decoder.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
