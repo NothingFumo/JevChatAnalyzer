@@ -74,13 +74,24 @@ public sealed partial class SettingsPage : Page
         try
         {
             var accounts = await AppState.Instance.ReadKeysAsync();
-            KeyStatus.Text = accounts.Count == 0
-                ? "未读取到密钥：请确认微信（Weixin.exe）已运行并登录。"
-                : "已读取并保存：" + string.Join("、", accounts.Select(a => $"{a.WxId}（{a.NickName}）"));
+            if (accounts.Count == 0)
+            {
+                KeyStatus.Text = "❌ 未读取到密钥：请确认微信（Weixin.exe）已运行并登录，或手动在下方输入。";
+                return;
+            }
+            // 回显到输入框：首个账号的 wxid / dbKey / 数据目录
+            var first = accounts[0];
+            ManualWxId.Text = first.WxId;
+            ManualDbKey.Text = first.DbKey;
+            ManualDataPath.Text = first.DataPath ?? "";
+            KeyStatus.Text = "✅ 已读取并保存：" +
+                             string.Join("；", accounts.Select(a => $"{a.WxId}（{a.NickName}）")) +
+                             $"——已回填到输入框（{first.WxId}）。";
         }
         catch (Exception ex)
         {
-            KeyStatus.Text = ex.Message;
+            KeyStatus.Text = "❌ 密钥读取失败：" + ex.Message +
+                             "（可在下方手动输入 wxid 与 dbKey 保存，不影响使用）";
         }
         finally
         {
