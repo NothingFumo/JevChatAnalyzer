@@ -57,13 +57,14 @@ public static class HttpDownload
         try
         {
             var probe = await ProbeAsync(url, ct, referer, direct);
+            var displayName = Path.GetFileName(destPath);
             if (probe.TotalSize >= ChunkedThreshold && probe.AcceptRanges)
             {
-                await DownloadChunkedAsync(url, tmp, probe, ct, progress, referer, direct);
+                await DownloadChunkedAsync(url, tmp, displayName, probe, ct, progress, referer, direct);
             }
             else
             {
-                await DownloadSingleAsync(probe.FinalUrl, tmp, ct, progress, referer, direct);
+                await DownloadSingleAsync(probe.FinalUrl, tmp, displayName, ct, progress, referer, direct);
             }
             await MoveWithRetry(tmp, destPath);
         }
@@ -104,7 +105,7 @@ public static class HttpDownload
     private sealed record ProbeResult(long TotalSize, bool AcceptRanges, string FinalUrl);
 
     // ── 4 线程分块并行 ──
-    private static async Task DownloadChunkedAsync(string url, string tmp, ProbeResult probe,
+    private static async Task DownloadChunkedAsync(string url, string tmp, string displayName, ProbeResult probe,
         CancellationToken ct, IProgress<DownloadProgress>? progress, string? referer, bool direct)
     {
         var total = probe.TotalSize;
@@ -147,11 +148,20 @@ public static class HttpDownload
             }
         }
 
+        // 报告器：分块完成后立即取消（避免迟到的进度与下一个文件交错造成显示横跳）
+        using var reporterCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var reporter = Task.Run(async () =>
         {
-            while (!ct.IsCancellationRequested)
+            while (!reporterCts.Token.IsCancellationRequested)
             {
-                await Task.Delay(500, ct);
+                try
+                {
+                    await Task.Delay(500, reporterCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
                 long current;
                 lock (gate)
                 {
@@ -165,36 +175,38 @@ public static class HttpDownload
                     lastReported = current;
                     lastTime = now;
                 }
-                progress?.Report(new DownloadProgress(Path.GetFileName(tmp), current, total)
+                progress?.Report(new DownloadProgress(displayName, current, total)
                 {
                     SpeedBytesPerSecond = speed,
                 });
             }
-        }, ct);
+        }, CancellationToken.None);
 
         try
         {
             var chunks = Enumerable.Range(0, ChunkThreads).Select(DownloadChunk).ToArray();
             await Task.WhenAll(chunks);
-            progress?.Report(new DownloadProgress(Path.GetFileName(tmp), total, total)
-            {
-                SpeedBytesPerSecond = 0,
-            });
         }
         finally
         {
+            reporterCts.Cancel();
             try
             {
-                await reporter.WaitAsync(TimeSpan.FromSeconds(1), CancellationToken.None);
+                await reporter;
             }
             catch (Exception)
             {
             }
+            // 每个文件只发一次 100% 终态
+            progress?.Report(new DownloadProgress(displayName, total, total)
+            {
+                SpeedBytesPerSecond = 0,
+            });
         }
     }
 
     // ── 单线程流式（小文件 / 不支持 Range 回退）──
-    private static async Task DownloadSingleAsync(string url, string tmp, CancellationToken ct,
+    private static async Task DownloadSingleAsync(string url, string tmp, string displayName, CancellationToken ct,
         IProgress<DownloadProgress>? progress, string? referer, bool direct)
     {
         using var handler = new HttpClientHandler { UseProxy = !direct };
@@ -222,12 +234,12 @@ public static class HttpDownload
                 lastReported = received;
                 lastTime = now;
             }
-            progress?.Report(new DownloadProgress(Path.GetFileName(tmp), received, total)
+            progress?.Report(new DownloadProgress(displayName, received, total)
             {
                 SpeedBytesPerSecond = speed,
             });
         }
-        progress?.Report(new DownloadProgress(Path.GetFileName(tmp), received, total)
+        progress?.Report(new DownloadProgress(displayName, received, total)
         {
             SpeedBytesPerSecond = 0,
         });
