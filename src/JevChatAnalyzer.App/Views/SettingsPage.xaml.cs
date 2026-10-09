@@ -42,6 +42,11 @@ public sealed partial class SettingsPage : Page
         MonitorSessionsBox.Text = s.MonitorSessions;
         WriteBackSwitch.IsOn = s.AutoWriteEnabled;
 
+        var (layaPresent, layaTotal) = NlayaModelDownloader.FileStatus(AppState.Instance.Settings.NlayaModelDir);
+        LayaModelStatus.Text = NlayaModelDownloader.IsModelReady(AppState.Instance.Settings.NlayaModelDir)
+            ? $"模型已就绪（{layaPresent}/{layaTotal} 文件）：" +
+              NlayaModelDownloader.ResolveDirectory(AppState.Instance.Settings.NlayaModelDir)
+            : $"模型未下载完整（{layaPresent}/{layaTotal} 文件），点「下载模型」补齐缺失文件。";
         var transcriber = AppState.Instance.Transcriber;
         VoiceModelStatus.Text = transcriber.IsModelReady
             ? $"模型已就绪：{transcriber.ModelFiles.ModelPath}（{FormatSize(new FileInfo(transcriber.ModelFiles.ModelPath).Length)}）"
@@ -141,9 +146,10 @@ public sealed partial class SettingsPage : Page
                                        (p.TotalBytes is { } t ? $" / {t / 1024 / 1024}MB" : "") +
                                        (p.SpeedBytesPerSecond is { } sp && sp > 0 ? $"（{FormatSize(sp)}/s）" : "");
             });
-            var dir = await NlayaModelDownloader.DownloadAsync(
+            var result = await NlayaModelDownloader.DownloadAsync(
                 AppState.Instance.Settings.NlayaModelDir, progress, _layaDownloadCts.Token);
-            LayaModelStatus.Text = $"模型已就绪：{dir}——本地判读后端已注册。";
+            var (present, total) = NlayaModelDownloader.FileStatus(result.Directory);
+            LayaModelStatus.Text = $"模型已就绪（{present}/{total} 文件）：{result.Directory}——本地判读后端已注册。";
             // 模型下载完成后立即注册本地后端（无需重启应用）
             AppState.Instance.RebuildJudgeService();
         }

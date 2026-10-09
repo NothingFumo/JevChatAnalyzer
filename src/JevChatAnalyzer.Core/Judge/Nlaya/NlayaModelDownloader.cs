@@ -23,10 +23,15 @@ public static class NlayaModelDownloader
     public const string RepoId = "convaiinnovations/laya-multilingual";
     public const string MirrorBase = "https://hf-mirror.com";
 
-    /// <summary>checkpoint 相对路径清单（共 5 个关键文件）。</summary>
+    /// <summary>
+    /// checkpoint 相对路径清单（对齐 HF 仓库真实布局，共 6 个文件）。
+    /// 注意 NLaya TorchSharp 后端要求 encoder/config.json（编码器构建入口），
+    /// 缺它报 "has no encoder/config.json"。
+    /// </summary>
     public static readonly string[] Files =
     [
         "config.json",
+        "encoder/config.json",
         "model.safetensors",
         "rl_agent_config.json",
         "tokenizer/tokenizer.json",
@@ -65,6 +70,14 @@ public static class NlayaModelDownloader
         list.Add("https://huggingface.co");
         list.Add(MirrorBase);
         return list;
+    }
+
+    /// <summary>文件就绪度（已存在/总数），供设置页显示。</summary>
+    public static (int Present, int Total) FileStatus(string? dir = null)
+    {
+        var root = ResolveDirectory(dir);
+        var present = Files.Count(f => IsReadyFile(Path.Combine(root, f.Replace('/', Path.DirectorySeparatorChar))));
+        return (present, Files.Length);
     }
 
     /// <summary>模型是否已就绪（目录内关键文件齐全且非空）。</summary>
