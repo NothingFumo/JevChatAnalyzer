@@ -177,7 +177,7 @@ public sealed class AppState
         Monitor.Start();
     }
 
-    // ── 自动写回：判读入队 → 监视微信退出 → 自动落库 ──
+    // ── 自动写回：判读入队 → 实时直写（1.5s 内）→ 失败回退排队/微信退出补写 ──
 
     private System.Threading.Timer? _autoWriteTimer;
     private int _autoWriteBusy;
@@ -208,10 +208,8 @@ public sealed class AppState
                 {
                     return;
                 }
-                if (!Core.WriteBack.WriteBackService.IsWeChatClosed())
-                {
-                    return; // 微信仍在运行，等下一轮
-                }
+                // 实时直写：微信运行中同样尝试（SQLite 多进程并发安全）；
+                // 直写失败自动回退排队——真正需要等微信退出的场景（如 WAL 合并）由失败退避自然覆盖
                 if (DateTimeOffset.UtcNow < _nextAutoWriteAttempt)
                 {
                     return; // 上轮失败退避中
