@@ -18,7 +18,7 @@
                         <TextBlock FontWeight="SemiBold" Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
                         <TextBlock FontSize="13" Text="{Binding Summary}" TextWrapping="Wrap"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock FontSize="12" Foreground="Gray" Text="{Binding Meta}"/>
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{Binding Meta}"/>
                     </StackPanel>
                 </DataTemplate>
             </ListView.ItemTemplate>

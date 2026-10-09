@@ -58,7 +58,7 @@
                         <TextBlock>数据目录（可选，默认自动定位）</TextBlock>
                         <TextBox x:Name="ManualDataPath" PlaceholderText="C:\Users\你\Documents\xwechat_files\wxid_xxxx_abcd"/>
                     </StackPanel>
-                    <TextBlock x:Name="KeyStatus" TextWrapping="Wrap" Foreground="Gray"/>
+                    <TextBlock x:Name="KeyStatus" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                 </StackPanel>
 
                 <!--  判读后端  -->
@@ -91,11 +91,11 @@
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <StackPanel Spacing="4" Width="200">
                             <TextBlock>监听轮询间隔（秒，最小 2）</TextBlock>
-                            <TextBox x:Name="MonitorIntervalBox"/>
+                            <NumberBox x:Name="MonitorIntervalBox" Minimum="2" Maximum="300" SmallChange="1" Value="5"/>
                         </StackPanel>
                         <StackPanel Spacing="4" Width="200">
                             <TextBlock>判读上下文条数</TextBlock>
-                            <TextBox x:Name="ContextTurnsBox"/>
+                            <NumberBox x:Name="ContextTurnsBox" Minimum="1" Maximum="200" SmallChange="5" Value="20"/>
                         </StackPanel>
                     </StackPanel>
                     <StackPanel Spacing="4">
@@ -118,7 +118,7 @@
                         <Button Click="OpenLayaModelDir_Click">打开模型目录</Button>
                     </StackPanel>
                     <ProgressBar x:Name="LayaProgress" Maximum="100" Value="0"/>
-                    <TextBlock x:Name="LayaModelStatus" Foreground="Gray" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="LayaModelStatus" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
                 </StackPanel>
 
                 <!--  语音转写  -->
@@ -136,7 +136,7 @@
                         <Button Click="OpenVoiceModelDir_Click">打开模型目录</Button>
                     </StackPanel>
                     <ProgressBar x:Name="VoiceProgress" Maximum="100" Value="0"/>
-                    <TextBlock x:Name="VoiceModelStatus" Foreground="Gray" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="VoiceModelStatus" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
                 </StackPanel>
 
                 <!--  隐私与写回  -->
@@ -149,7 +149,7 @@
                         <Button Click="OpenBackups_Click">打开备份目录</Button>
                         <Button x:Name="ListWriteBacksButton" Click="ListWriteBacks_Click">查看写回台账</Button>
                     </StackPanel>
-                    <TextBlock x:Name="WriteBackListText" TextWrapping="Wrap" FontSize="12" Foreground="Gray"/>
+                    <TextBlock x:Name="WriteBackListText" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Text="判读历史以 AES-256-GCM 加密存储在本机（密钥经 DPAPI 绑定当前用户）。"/>
                 </StackPanel>
@@ -164,7 +164,7 @@
 
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <Button x:Name="SaveSettingsButton" Click="Save_Click" Style="{StaticResource AccentButtonStyle}">保存设置</Button>
-                    <TextBlock x:Name="SaveHint" VerticalAlignment="Center" Foreground="Gray"/>
+                    <TextBlock x:Name="SaveHint" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>

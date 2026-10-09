@@ -37,8 +37,8 @@ public sealed partial class SettingsPage : Page
         VoiceSwitch.IsOn = s.VoiceEnabled;
         VoiceModelDirBox.Text = s.VoiceModelDir;
         MonitorSwitch.IsOn = s.MonitorEnabled;
-        MonitorIntervalBox.Text = s.MonitorIntervalSeconds.ToString();
-        ContextTurnsBox.Text = s.ContextTurns.ToString();
+        MonitorIntervalBox.Value = s.MonitorIntervalSeconds;
+        ContextTurnsBox.Value = s.ContextTurns;
         MonitorSessionsBox.Text = s.MonitorSessions;
         WriteBackSwitch.IsOn = s.AutoWriteEnabled;
 
@@ -259,8 +259,8 @@ public sealed partial class SettingsPage : Page
         s.LayaServerUrl = LayaServerBox.Text.Trim();
         s.VoiceEnabled = VoiceSwitch.IsOn;
         s.MonitorEnabled = MonitorSwitch.IsOn;
-        s.MonitorIntervalSeconds = Math.Max(2, int.TryParse(MonitorIntervalBox.Text.Trim(), out var iv) ? iv : 5);
-        s.ContextTurns = Math.Clamp(int.TryParse(ContextTurnsBox.Text.Trim(), out var ctx) ? ctx : 20, 1, 200);
+        s.MonitorIntervalSeconds = (int)MonitorIntervalBox.Value;
+        s.ContextTurns = (int)ContextTurnsBox.Value;
         s.MonitorSessions = MonitorSessionsBox.Text.Trim();
         s.VoiceModelDir = VoiceModelDirBox.Text.Trim();
         // 监听配置热生效：重启监听（已打开数据时）

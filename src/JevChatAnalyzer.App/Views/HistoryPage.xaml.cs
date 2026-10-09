@@ -22,9 +22,22 @@ public sealed partial class HistoryPage : Page
 
     private void Refresh_Click(object sender, RoutedEventArgs e) => Load();
 
-    private void Delete_Click(object sender, RoutedEventArgs e)
+    private async void Delete_Click(object sender, RoutedEventArgs e)
     {
-        if (HistoryList.SelectedItem is HistoryRow row)
+        if (HistoryList.SelectedItem is not HistoryRow row)
+        {
+            return;
+        }
+        var confirm = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "删除判读记录",
+            Content = $"将删除 {row.Record.CreatedAt:MM-dd HH:mm} 对「{row.Record.SessionTitle}」的判读记录（不影响微信数据）。是否继续？",
+            PrimaryButtonText = "删除",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        if (await confirm.ShowAsync() == ContentDialogResult.Primary)
         {
             AppState.Instance.History.Delete(row.Record.Id);
             Load();

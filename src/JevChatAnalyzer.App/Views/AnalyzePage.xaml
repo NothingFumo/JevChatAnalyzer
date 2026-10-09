@@ -42,9 +42,9 @@
             <StackPanel Grid.Column="0" Spacing="6">
                 <AutoSuggestBox x:Name="SessionSearchBox" PlaceholderText="搜索会话…"
                                 QueryIcon="Find" TextChanged="SessionSearchBox_TextChanged"/>
-                <TextBlock FontSize="11" Foreground="Gray" TextWrapping="Wrap"
+                <TextBlock FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
                            Text="勾选「监听」的会话才会实时分析（全不勾 = 监听全部）"/>
-                <ListView x:Name="SessionList" SelectionChanged="SessionList_SelectionChanged" MaxHeight="620">
+                <ListView x:Name="SessionList" SelectionChanged="SessionList_SelectionChanged">
                     <ListView.ItemTemplate>
                         <DataTemplate>
                             <Grid Padding="4" ColumnSpacing="6">
@@ -58,7 +58,7 @@
                                           VerticalAlignment="Center"/>
                                 <StackPanel Grid.Column="1" Spacing="2">
                                     <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock FontSize="12" Foreground="Gray">
+                                    <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
                                         <Run Text="{Binding KindLabel}"/><Run Text=" · "/><Run Text="{Binding CountLabel}"/>
                                     </TextBlock>
                                 </StackPanel>
@@ -81,15 +81,15 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <TextBlock FontSize="13" Margin="0,1">
-                                            <Run Text="{Binding Label}" Foreground="Gray"/><Run Text="  "/><Run Text="{Binding Value}"/>
+                                            <Run Text="{Binding Label}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/><Run Text="  "/><Run Text="{Binding Value}"/>
                                         </TextBlock>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <TextBlock x:Name="VerdictMeta" FontSize="12" Foreground="Gray"/>
+                            <TextBlock x:Name="VerdictMeta" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         </StackPanel>
                     </Border>
-                    <TextBlock FontSize="12" Foreground="Gray" TextWrapping="Wrap"
+                    <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
                                Text="分析流程：读取会话最近上下文 → 以对方最新一条消息为焦点判读 → 结论入待写队列 → 微信退出后自动写回为引用消息。消息原文不在此展示，完整判读记录见「判读历史」。"/>
                 </StackPanel>
             </ScrollViewer>

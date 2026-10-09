@@ -139,6 +139,11 @@ public sealed partial class AnalyzePage : Page
             Monitored = whitelist.Count == 0 || whitelist.Contains(s.SessionId),
         }).ToList();
         ApplySessionFilter();
+        // 自动选中最近活跃会话（少一次点击）
+        if (SessionList.Items.Count > 0)
+        {
+            SessionList.SelectedIndex = 0;
+        }
         RefreshButton.IsEnabled = true;
     }
 
@@ -204,6 +209,13 @@ public sealed partial class AnalyzePage : Page
     {
         if (SessionList.SelectedItem is SessionRow row)
         {
+            if (_currentSession?.SessionId != row.Session.SessionId)
+            {
+                // 切换会话清空上一会话的分析结果，避免误读
+                VerdictPanel.Visibility = Visibility.Collapsed;
+                FocusInfo.IsOpen = false;
+                _lastOutcome = null;
+            }
             _currentSession = row.Session;
         }
         SetBusy(false);
@@ -294,7 +306,7 @@ public sealed partial class AnalyzePage : Page
                 {
                     Text = $"[{s.Tone}]",
                     FontSize = 12,
-                    Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray),
+                    Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
                 });
                 item.Children.Add(new TextBlock { Text = s.Text, TextWrapping = TextWrapping.Wrap });
                 panel.Children.Add(item);
