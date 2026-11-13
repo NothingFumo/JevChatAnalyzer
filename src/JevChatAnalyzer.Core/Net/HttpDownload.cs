@@ -1,4 +1,5 @@
-using JevChatAnalyzer.Core.Voice;
+using System.Net;
+using System.Net.Http.Headers;
 
 namespace JevChatAnalyzer.Core.Net;
 
@@ -12,14 +13,14 @@ public sealed record DownloadProgress(string FileName, long BytesReceived, long?
 }
 
 /// <summary>
-/// 通用 HTTP 下载器：
-/// - 探测：GET Range bytes=0-0 拿总大小 + Accept-Ranges（HttpClient 自动跟随重定向）
-/// - 大文件（≥2MB 且支持 Range）4 线程分块并行，按偏移写入同一 .part 文件；
-///   小文件/不支持 Range 回退单线程
-/// - 每次尝试唯一 .part 临时名；失败清理半成品
-/// - 第 1 轮走系统代理，失败第 2 轮直连（系统代理要求认证时所有主机都 401 的兜底）
-/// - 浏览器 UA + 可选 Referer（modelscope 防盗链）
-/// - 进度带每秒速度采样
+///     通用 HTTP 下载器：
+///     - 探测：GET Range bytes=0-0 拿总大小 + Accept-Ranges（HttpClient 自动跟随重定向）
+///     - 大文件（≥2MB 且支持 Range）4 线程分块并行，按偏移写入同一 .part 文件；
+///     小文件/不支持 Range 回退单线程
+///     - 每次尝试唯一 .part 临时名；失败清理半成品
+///     - 第 1 轮走系统代理，失败第 2 轮直连（系统代理要求认证时所有主机都 401 的兜底）
+///     - 浏览器 UA + 可选 Referer（modelscope 防盗链）
+///     - 进度带每秒速度采样
 /// </summary>
 public static class HttpDownload
 {
@@ -31,10 +32,9 @@ public static class HttpDownload
     {
         Exception? last = null;
         for (var attempt = 0; attempt < 2; attempt++)
-        {
             try
             {
-                await CoreAsync(url, destPath, ct, progress, referer, direct: attempt == 1);
+                await CoreAsync(url, destPath, ct, progress, referer, attempt == 1);
                 return;
             }
             catch (OperationCanceledException)
@@ -45,7 +45,7 @@ public static class HttpDownload
             {
                 last = e; // 换直连再试一次
             }
-        }
+
         throw last!;
     }
 
@@ -59,13 +59,9 @@ public static class HttpDownload
             var probe = await ProbeAsync(url, ct, referer, direct);
             var displayName = Path.GetFileName(destPath);
             if (probe.TotalSize >= ChunkedThreshold && probe.AcceptRanges)
-            {
                 await DownloadChunkedAsync(url, tmp, displayName, probe, ct, progress, referer, direct);
-            }
             else
-            {
                 await DownloadSingleAsync(probe.FinalUrl, tmp, displayName, ct, progress, referer, direct);
-            }
             await MoveWithRetry(tmp, destPath);
         }
         catch
@@ -82,14 +78,14 @@ public static class HttpDownload
         using var handler = new HttpClientHandler { UseProxy = !direct, AllowAutoRedirect = true };
         using var http = BuildClient(handler);
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 0);
+        request.Headers.Range = new RangeHeaderValue(0, 0);
         ApplyHeaders(request, referer);
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
 
         long total = 0;
         var acceptRanges = false;
-        if (response.StatusCode == System.Net.HttpStatusCode.PartialContent)
+        if (response.StatusCode == HttpStatusCode.PartialContent)
         {
             var range = response.Content.Headers.ContentRange;
             total = range?.Length ?? response.Content.Headers.ContentLength ?? 0;
@@ -99,17 +95,16 @@ public static class HttpDownload
         {
             total = response.Content.Headers.ContentLength ?? 0;
         }
+
         return new ProbeResult(total, acceptRanges, url);
     }
-
-    private sealed record ProbeResult(long TotalSize, bool AcceptRanges, string FinalUrl);
 
     // ── 4 线程分块并行 ──
     private static async Task DownloadChunkedAsync(string url, string tmp, string displayName, ProbeResult probe,
         CancellationToken ct, IProgress<DownloadProgress>? progress, string? referer, bool direct)
     {
         var total = probe.TotalSize;
-        await using var file = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.Write, 1, useAsync: true);
+        await using var file = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.Write, 1, true);
         file.SetLength(total);
 
         var chunkSize = total / ChunkThreads + (total % ChunkThreads == 0 ? 0 : 1);
@@ -126,20 +121,18 @@ public static class HttpDownload
             using var handler = new HttpClientHandler { UseProxy = !direct };
             using var http = BuildClient(handler);
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(start, end);
+            request.Headers.Range = new RangeHeaderValue(start, end);
             ApplyHeaders(request, referer);
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-            if (response.StatusCode != System.Net.HttpStatusCode.PartialContent)
-            {
+            if (response.StatusCode != HttpStatusCode.PartialContent)
                 throw new InvalidOperationException($"分块下载失败：HTTP {(int)response.StatusCode}");
-            }
             await using var src = await response.Content.ReadAsStreamAsync(ct);
             var buffer = new byte[1 << 17];
             var offset = start;
             int read;
             while ((read = await src.ReadAsync(buffer, ct)) > 0)
             {
-                System.IO.RandomAccess.Write(file.SafeFileHandle, buffer.AsSpan(0, read), offset);
+                RandomAccess.Write(file.SafeFileHandle, buffer.AsSpan(0, read), offset);
                 offset += read;
                 lock (gate)
                 {
@@ -162,11 +155,13 @@ public static class HttpDownload
                 {
                     return;
                 }
+
                 long current;
                 lock (gate)
                 {
                     current = downloadedTotal;
                 }
+
                 var now = DateTimeOffset.Now;
                 var secs = (now - lastTime).TotalSeconds;
                 if (secs > 0.3)
@@ -175,9 +170,10 @@ public static class HttpDownload
                     lastReported = current;
                     lastTime = now;
                 }
+
                 progress?.Report(new DownloadProgress(displayName, current, total)
                 {
-                    SpeedBytesPerSecond = speed,
+                    SpeedBytesPerSecond = speed
                 });
             }
         }, CancellationToken.None);
@@ -197,10 +193,11 @@ public static class HttpDownload
             catch (Exception)
             {
             }
+
             // 每个文件只发一次 100% 终态
             progress?.Report(new DownloadProgress(displayName, total, total)
             {
-                SpeedBytesPerSecond = 0,
+                SpeedBytesPerSecond = 0
             });
         }
     }
@@ -234,14 +231,19 @@ public static class HttpDownload
                 lastReported = received;
                 lastTime = now;
             }
+
             progress?.Report(new DownloadProgress(displayName, received, total)
             {
-                SpeedBytesPerSecond = speed,
+                SpeedBytesPerSecond = speed
             });
         }
+
+        if (total is { } expected && received != expected)
+            // 镜像返回 HTML 错误页/短包时长度对不上：宁可失败重试，也不能把坏文件当模型就绪
+            throw new IOException($"下载不完整：{displayName} 收到 {received}/{expected} 字节。");
         progress?.Report(new DownloadProgress(displayName, received, total)
         {
-            SpeedBytesPerSecond = 0,
+            SpeedBytesPerSecond = 0
         });
     }
 
@@ -255,39 +257,33 @@ public static class HttpDownload
 
     private static void ApplyHeaders(HttpRequestMessage request, string? referer)
     {
-        if (!string.IsNullOrEmpty(referer))
-        {
-            request.Headers.Referrer = new Uri(referer);
-        }
+        if (!string.IsNullOrEmpty(referer)) request.Headers.Referrer = new Uri(referer);
     }
 
     private static async Task MoveWithRetry(string tmp, string destPath)
     {
-        for (var i = 0; ; i++)
-        {
+        for (var i = 0;; i++)
             try
             {
-                File.Move(tmp, destPath, overwrite: true);
+                File.Move(tmp, destPath, true);
                 return;
             }
             catch (IOException) when (i < 3)
             {
                 await Task.Delay(200 * (i + 1));
             }
-        }
     }
 
     private static void TryDelete(string path)
     {
         try
         {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
+            if (File.Exists(path)) File.Delete(path);
         }
         catch (IOException)
         {
         }
     }
+
+    private sealed record ProbeResult(long TotalSize, bool AcceptRanges, string FinalUrl);
 }

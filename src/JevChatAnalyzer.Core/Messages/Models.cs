@@ -4,10 +4,10 @@ namespace JevChatAnalyzer.Core.Messages;
 public enum SessionKind
 {
     Unknown = 0,
-    Single = 1,   // 单聊（wxid_*）
-    Group = 2,    // 群聊（*@chatroom）
+    Single = 1, // 单聊（wxid_*）
+    Group = 2, // 群聊（*@chatroom）
     Official = 3, // 公众号等（gh_*）
-    System = 4,   // 系统账号（weixin / filehelper 等）
+    System = 4 // 系统账号（weixin / filehelper 等）
 }
 
 /// <summary>会话列表条目。</summary>
@@ -33,7 +33,10 @@ public sealed record ChatSession
 /// <summary>消息在数据库中的定位键：分片库 + 表 + local_id。</summary>
 public sealed record MessageLocation(string ShardPath, string TableName, long LocalId)
 {
-    public override string ToString() => $"{Path.GetFileName(ShardPath)}::{TableName}#{LocalId}";
+    public override string ToString()
+    {
+        return $"{Path.GetFileName(ShardPath)}::{TableName}#{LocalId}";
+    }
 }
 
 /// <summary>消息附带的引用块（来自引用消息的 refermsg 解析，或聊天记录转发的摘录）。</summary>
@@ -101,46 +104,49 @@ public sealed record ChatMessage
     public JudgeVerdict? Verdict { get; set; }
 }
 
-/// <summary>一次判读的结论（题目 id → 结论摘要），与具体后端解耦。</summary>
+/// <summary>一次判读的结论（题目 id → 结论摘要）。</summary>
 public sealed record JudgeVerdict
 {
+    /// <summary>盲起草兜底的来源标记（判读不可用时的产物，不写回数据库）。</summary>
+    public const string BlindDraftBackendName = "盲起草";
+
     public required string BackendName { get; init; }
     public required string Model { get; init; }
     public DateTimeOffset JudgedAt { get; init; }
+
     /// <summary>题目 id → (标签, 概率或分值)。</summary>
     public required IReadOnlyDictionary<string, JudgeAnswer> Answers { get; init; }
+
     /// <summary>用于展示的一句话摘要（如「对方在征询意见，不急」）。</summary>
     public string Summary { get; init; } = "";
+
+    /// <summary>这条结论是否来自盲起草（未经判读校准）。</summary>
+    public bool IsBlindDraft => BackendName == BlindDraftBackendName;
 }
 
 /// <summary>单题答案。</summary>
 public sealed record JudgeAnswer(string Kind, string? Label, double Value, double Confidence)
 {
-    public override string ToString() => Kind switch
+    public override string ToString()
     {
-        "choice" => $"{Label} ({Confidence:P0})",
-        "score" => $"{Value:0.00}",
-        _ => $"{(Value >= 0.5 ? "是" : "否")} ({Confidence:P0})",
-    };
+        return Kind switch
+        {
+            "choice" => $"{Label} ({Confidence:P0})",
+            "score" => $"{Value:0.00}",
+            _ => $"{(Value >= 0.5 ? "是" : "否")} ({Confidence:P0})"
+        };
+    }
 }
 
 public static class SessionKindExtensions
 {
     public static SessionKind Classify(string sessionId)
     {
-        if (sessionId.EndsWith("@chatroom", StringComparison.OrdinalIgnoreCase))
-        {
-            return SessionKind.Group;
-        }
-        if (sessionId.StartsWith("gh_", StringComparison.OrdinalIgnoreCase))
-        {
-            return SessionKind.Official;
-        }
+        if (sessionId.EndsWith("@chatroom", StringComparison.OrdinalIgnoreCase)) return SessionKind.Group;
+        if (sessionId.StartsWith("gh_", StringComparison.OrdinalIgnoreCase)) return SessionKind.Official;
         if (sessionId is "weixin" or "filehelper" or "fmessage" or "newsapp" ||
             sessionId.StartsWith("gh_", StringComparison.OrdinalIgnoreCase))
-        {
             return SessionKind.System;
-        }
         return sessionId.Contains('@') ? SessionKind.Unknown : SessionKind.Single;
     }
 }

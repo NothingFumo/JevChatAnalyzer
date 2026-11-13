@@ -9,16 +9,26 @@ public static class ProtectedStore
     // 应用级附加熵：换掉它会导致旧数据无法解密，因此固定为常量。
     private static readonly byte[] Entropy = "JevChatAnalyzer:v1"u8.ToArray();
 
-    public static string ProtectString(string plain) =>
-        Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(plain), Entropy, DataProtectionScope.CurrentUser));
+    public static string ProtectString(string plain)
+    {
+        return Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(plain), Entropy,
+            DataProtectionScope.CurrentUser));
+    }
 
-    public static string UnprotectString(string cipherBase64) =>
-        Encoding.UTF8.GetString(Unprotect(cipherBase64));
+    public static string UnprotectString(string cipherBase64)
+    {
+        return Encoding.UTF8.GetString(Unprotect(cipherBase64));
+    }
 
     /// <summary>任意字节的 DPAPI 保护（Base64 输出），用于文件密钥等非文本数据。</summary>
-    public static string ProtectBytes(byte[] plain) =>
-        Convert.ToBase64String(ProtectedData.Protect(plain, Entropy, DataProtectionScope.CurrentUser));
+    public static string ProtectBytes(byte[] plain)
+    {
+        return Convert.ToBase64String(ProtectedData.Protect(plain, Entropy, DataProtectionScope.CurrentUser));
+    }
 
-    public static byte[] Unprotect(string cipherBase64) =>
-        ProtectedData.Unprotect(Convert.FromBase64String(cipherBase64), Entropy, DataProtectionScope.CurrentUser);
+    public static byte[] Unprotect(string cipherBase64)
+    {
+        return ProtectedData.Unprotect(Convert.FromBase64String(cipherBase64), Entropy,
+            DataProtectionScope.CurrentUser);
+    }
 }

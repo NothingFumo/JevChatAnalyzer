@@ -1,7 +1,6 @@
-using System.Security.Cryptography;
-using System.Text;
+using System.Collections.Concurrent;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using JevChatAnalyzer.Core.Net;
 using SherpaOnnx;
 
@@ -16,8 +15,8 @@ public sealed record VoiceModelFiles(string ModelPath, string TokensPath)
 // 下载进度统一使用 JevChatAnalyzer.Core.Net.DownloadProgress（含速度）。
 
 /// <summary>
-/// 语音转写：sherpa-onnx SenseVoiceSmall（int8），模型按需下载（modelscope 优先，HF 兜底），
-/// 本地化路线；转写结果按 server_id 缓存。
+///     语音转写：sherpa-onnx SenseVoiceSmall（int8），模型按需下载（modelscope 优先，HF 兜底），
+///     转写结果按 server_id 缓存。
 /// </summary>
 public sealed class VoiceTranscriber : IDisposable
 {
@@ -27,19 +26,29 @@ public sealed class VoiceTranscriber : IDisposable
     /// <summary>modelscope 直链（国内快）；hf / hf-mirror 依次兜底（匿名 401/403 时换源）。</summary>
     public static readonly (string Name, string Url)[] ModelSources =
     [
-        ("model.int8.onnx", "https://modelscope.cn/models/pengzhendong/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/master/model.int8.onnx"),
-        ("tokens.txt", "https://modelscope.cn/models/pengzhendong/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/master/tokens.txt"),
-        ("hf-model.int8.onnx", "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/main/model.int8.onnx"),
-        ("hf-tokens.txt", "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/main/tokens.txt"),
-        ("hfm-model.int8.onnx", "https://hf-mirror.com/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/main/model.int8.onnx"),
-        ("hfm-tokens.txt", "https://hf-mirror.com/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/main/tokens.txt"),
+        ("model.int8.onnx",
+            "https://modelscope.cn/models/pengzhendong/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/master/model.int8.onnx"),
+        ("tokens.txt",
+            "https://modelscope.cn/models/pengzhendong/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/master/tokens.txt"),
+        ("hf-model.int8.onnx",
+            "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/main/model.int8.onnx"),
+        ("hf-tokens.txt",
+            "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/main/tokens.txt"),
+        ("hfm-model.int8.onnx",
+            "https://hf-mirror.com/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/main/model.int8.onnx"),
+        ("hfm-tokens.txt",
+            "https://hf-mirror.com/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/main/tokens.txt")
     ];
 
-    private OfflineRecognizer? _recognizer;
-    private readonly string _modelDir;
+    /// <summary>进行中下载的去重表（同一目录只允许一个下载任务，重复调用复用同一条）。</summary>
+    private static readonly ConcurrentDictionary<string, Task> RunningDownloads = new();
+
     private readonly string _cachePath;
     private readonly object _lock = new();
+    private readonly string _modelDir;
     private Dictionary<string, string> _cache = [];
+
+    private OfflineRecognizer? _recognizer;
 
     public VoiceTranscriber(string? modelDir = null, string? cachePath = null)
     {
@@ -54,9 +63,6 @@ public sealed class VoiceTranscriber : IDisposable
         LoadCache();
     }
 
-    /// <summary>进行中下载的去重表（同一目录只允许一个下载任务，重复调用复用同一条）。</summary>
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, System.Threading.Tasks.Task> RunningDownloads = new();
-
     public VoiceModelFiles ModelFiles => new(
         Path.Combine(_modelDir, "model.int8.onnx"),
         Path.Combine(_modelDir, "tokens.txt"));
@@ -64,12 +70,33 @@ public sealed class VoiceTranscriber : IDisposable
     /// <summary>模型是否已就绪。</summary>
     public bool IsModelReady => ModelFiles.Exists;
 
+    public void Dispose()
+    {
+        _recognizer?.Dispose();
+        _recognizer = null;
+    }
+
     /// <summary>
-    /// 下载模型（已就绪时直接返回）。文件按序下载到临时名，成功后改名；
-    /// 取消令牌可中断。progress 回调线程池线程上触发。
+    ///     下载模型（已就绪时直接返回）。文件按序下载到临时名，成功后改名；
+    ///     取消令牌可中断。progress 回调线程池线程上触发。
     /// </summary>
-    public Task DownloadModelAsync(CancellationToken ct = default, IProgress<DownloadProgress>? progress = null) =>
-        RunningDownloads.GetOrAdd(_modelDir, _ => RunDownloadAsync(ct, progress));
+    public Task DownloadModelAsync(CancellationToken ct = default, IProgress<DownloadProgress>? progress = null)
+    {
+        return RunningDownloads.GetOrAdd(_modelDir, _ => TrackAsync(ct, progress));
+    }
+
+    /// <summary>下载结束（成功/失败/取消）后把任务从去重表移除，否则一次取消失败会永久挡住重试。</summary>
+    private async Task TrackAsync(CancellationToken ct, IProgress<DownloadProgress>? progress)
+    {
+        try
+        {
+            await RunDownloadAsync(ct, progress);
+        }
+        finally
+        {
+            RunningDownloads.TryRemove(_modelDir, out _);
+        }
+    }
 
     private async Task RunDownloadAsync(CancellationToken ct, IProgress<DownloadProgress>? progress)
     {
@@ -78,32 +105,33 @@ public sealed class VoiceTranscriber : IDisposable
         var files = new (string Target, string[] Sources)[]
         {
             ("model.int8.onnx", [ModelSources[0].Url, ModelSources[2].Url, ModelSources[4].Url]),
-            ("tokens.txt", [ModelSources[1].Url, ModelSources[3].Url, ModelSources[5].Url]),
+            ("tokens.txt", [ModelSources[1].Url, ModelSources[3].Url, ModelSources[5].Url])
         };
         foreach (var (target, sources) in files)
         {
             var dest = Path.Combine(_modelDir, target);
-            if (File.Exists(dest) && new FileInfo(dest).Length > 1024)
-            {
-                continue;
-            }
+            if (File.Exists(dest) && new FileInfo(dest).Length > 1024) continue;
             // 权重进度：model 占 80%，tokens 占 20%
             var weight = target == "model.int8.onnx" ? 80.0 : 20.0;
-            var baseBytes = target == "model.int8.onnx" ? 0L : await SafeSizeAsync(Path.Combine(_modelDir, "model.int8.onnx")) ?? 0L;
-            var weighted = progress is null ? null : new Progress<DownloadProgress>(p =>
-                progress.Report(new DownloadProgress(p.FileName,
-                    baseBytes + (long)(p.BytesReceived * weight / 100.0),
-                    p.TotalBytes is { } t ? baseBytes + (long)(t * weight / 100.0) : null)
-                {
-                    SpeedBytesPerSecond = p.SpeedBytesPerSecond,
-                }));
+            var baseBytes = target == "model.int8.onnx"
+                ? 0L
+                : await SafeSizeAsync(Path.Combine(_modelDir, "model.int8.onnx")) ?? 0L;
+            var weighted = progress is null
+                ? null
+                : new Progress<DownloadProgress>(p =>
+                    progress.Report(new DownloadProgress(p.FileName,
+                        baseBytes + (long)(p.BytesReceived * weight / 100.0),
+                        p.TotalBytes is { } t ? baseBytes + (long)(t * weight / 100.0) : null)
+                    {
+                        SpeedBytesPerSecond = p.SpeedBytesPerSecond
+                    }));
             var errors = new List<string>();
             foreach (var source in sources)
-            {
                 try
                 {
                     var referer = source.Contains("modelscope", StringComparison.OrdinalIgnoreCase)
-                        ? "https://modelscope.cn/" : null;
+                        ? "https://modelscope.cn/"
+                        : null;
                     await HttpDownload.DownloadAsync(source, dest, ct, weighted, referer);
                     errors.Clear();
                     break;
@@ -116,13 +144,11 @@ public sealed class VoiceTranscriber : IDisposable
                 {
                     errors.Add($"{new Uri(source).Host}: {e.Message}"); // 401/403/网络失败 → 换下一源
                 }
-            }
+
             if (errors.Count == sources.Length)
-            {
                 throw new InvalidOperationException(
                     $"下载 {target} 失败（已尝试 modelscope、huggingface、hf-mirror）：\n" +
                     string.Join("\n", errors));
-            }
         }
     }
 
@@ -131,11 +157,9 @@ public sealed class VoiceTranscriber : IDisposable
     {
         lock (_lock)
         {
-            if (_cache.TryGetValue(cacheKey, out var cached))
-            {
-                return cached;
-            }
+            if (_cache.TryGetValue(cacheKey, out var cached)) return cached;
         }
+
         var audio = SilkDecoder.DecodeToPcm(silkData);
         var text = TranscribePcm(audio.Pcm, audio.SampleRate);
         lock (_lock)
@@ -143,16 +167,14 @@ public sealed class VoiceTranscriber : IDisposable
             _cache[cacheKey] = text;
             SaveCache();
         }
+
         return text;
     }
 
     /// <summary>直接转写 PCM（自动重采样到 16k）。</summary>
     public string TranscribePcm(short[] pcm, int sampleRate)
     {
-        if (!IsModelReady)
-        {
-            throw new VoiceException("SenseVoice 模型未就绪。请先在设置中下载模型。");
-        }
+        if (!IsModelReady) throw new VoiceException("SenseVoice 模型未就绪。请先在设置中下载模型。");
         var recognizer = EnsureRecognizer();
         var samples = SilkDecoder.ToFloat(SilkDecoder.Resample(pcm, sampleRate, 16000));
         using var stream = recognizer.CreateStream();
@@ -160,15 +182,12 @@ public sealed class VoiceTranscriber : IDisposable
         recognizer.Decode(stream);
         var text = stream.Result.Text?.Trim() ?? "";
         // SenseVoice 输出可能带情感/事件标签（[HAPPY] 等），剥离方括号标签
-        return System.Text.RegularExpressions.Regex.Replace(text, @"\[[A-Z_a-z]+\]", "").Trim();
+        return Regex.Replace(text, @"\[[A-Z_a-z]+\]", "").Trim();
     }
 
     private OfflineRecognizer EnsureRecognizer()
     {
-        if (_recognizer is not null)
-        {
-            return _recognizer;
-        }
+        if (_recognizer is not null) return _recognizer;
         var files = ModelFiles;
         var config = new OfflineRecognizerConfig();
         config.ModelConfig.SenseVoice.Model = files.ModelPath;
@@ -187,9 +206,7 @@ public sealed class VoiceTranscriber : IDisposable
         try
         {
             if (File.Exists(_cachePath))
-            {
                 _cache = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(_cachePath)) ?? [];
-            }
         }
         catch (JsonException)
         {
@@ -202,7 +219,8 @@ public sealed class VoiceTranscriber : IDisposable
         try
         {
             Directory.CreateDirectory(_modelDir);
-            File.WriteAllText(_cachePath, JsonSerializer.Serialize(_cache, new JsonSerializerOptions { WriteIndented = false }));
+            File.WriteAllText(_cachePath,
+                JsonSerializer.Serialize(_cache, new JsonSerializerOptions { WriteIndented = false }));
         }
         catch (IOException)
         {
@@ -224,12 +242,8 @@ public sealed class VoiceTranscriber : IDisposable
     }
 
     /// <summary>转写缓存键：server_id 或 create_time+local_id 兜底。</summary>
-    public static string CacheKey(long? serverId, long createTime, long localId) =>
-        serverId is { } sid ? $"s{sid}" : $"t{createTime}_l{localId}";
-
-    public void Dispose()
+    public static string CacheKey(long? serverId, long createTime, long localId)
     {
-        _recognizer?.Dispose();
-        _recognizer = null;
+        return serverId is { } sid ? $"s{sid}" : $"t{createTime}_l{localId}";
     }
 }
