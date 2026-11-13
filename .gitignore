@@ -12,15 +12,12 @@ AppPackages/
 TestResults/
 coverage/
 
-# 运行时数据（密钥、解密副本、历史库、模型缓存）一律不入库
+# 运行时数据（密钥、判读台账、模型缓存）一律不入库
 runtime/
 models/
 *.db
 *.db-wal
 *.db-shm
-
-# 第三方原生大文件占位（tools/ 下的 exe 显式跟踪）
-tools/*.zip
 
 # 日志
 *.log
@@ -30,3 +27,7 @@ logs/
 .idea/
 .vs/
 *.pfx
+
+# 本地文档（保留在工作区，不进版本库）
+docs/
+CONTEXT.md
