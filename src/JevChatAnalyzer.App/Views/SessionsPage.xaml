@@ -1,0 +1,223 @@
+<Page
+    x:Class="JevChatAnalyzer.App.Views.SessionsPage"
+    NavigationCacheMode="Required"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Padding="12" RowSpacing="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--  行 1：当前账号（头像 + 昵称）与数据刷新  -->
+        <Grid Grid.Row="0" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Border x:Name="SelfAvatarBorder" Width="28" Height="28" CornerRadius="14" VerticalAlignment="Center"
+                    Background="{ThemeResource AccentFillColorDefaultBrush}">
+                <Grid>
+                    <TextBlock x:Name="SelfInitial" Foreground="White" FontSize="12" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <Image x:Name="SelfImage" Stretch="UniformToFill" Visibility="Collapsed" />
+                </Grid>
+            </Border>
+            <TextBlock x:Name="SelfName" Grid.Column="1" VerticalAlignment="Center" FontWeight="SemiBold" Text="未连接" />
+            <TextBlock x:Name="SelfHint" Grid.Column="2" VerticalAlignment="Center" FontSize="12" Margin="8,0,0,0"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8">
+                <Button Height="32" Padding="12,0" x:Name="ReconnectButton" Click="Reconnect_Click" Content="重新连接"
+                        Visibility="Collapsed" />
+                <Button Height="32" Padding="12,0" x:Name="RefreshButton" Click="Refresh_Click" IsEnabled="False">刷新会话</Button>
+                <Button Height="32" Padding="12,0" x:Name="PendingButton" Click="Pending_Click">待写队列</Button>
+                <ProgressRing x:Name="BusyRing" Width="24" Height="24" IsActive="False" />
+            </StackPanel>
+        </Grid>
+
+        <!--  行 2：判读操作（与上一行左对齐）  -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+            <Button Padding="12,0" x:Name="AnalyzeButton" Click="Analyze_Click" IsEnabled="False" Height="32"
+                    Style="{StaticResource AccentButtonStyle}"
+                    ToolTipService.ToolTip="判读对方最新一条消息，结果以对话框呈现">
+                分析对方最新消息
+            </Button>
+            <Button Padding="12,0" x:Name="DraftButton" Click="Draft_Click" IsEnabled="False" Height="32">起草回复</Button>
+            <Button Padding="12,0" x:Name="RevokeButton" Click="Revoke_Click" IsEnabled="False" Height="32">撤销写回</Button>
+            <Button Padding="12,0" x:Name="ReapplyButton" Click="Reapply_Click" IsEnabled="False" Height="32"
+                    ToolTipService.ToolTip="用台账里保留的判读结论，再次原样写回同一条消息">
+                再次写回
+            </Button>
+        </StackPanel>
+
+        <!--  行 3：监听设置（同样左对齐，控件统一 32px 高）  -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left">
+            <TextBlock Text="实时监听" FontSize="12" VerticalAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <ToggleSwitch x:Name="MonitorSwitch" OnContent="" OffContent="" MinWidth="0" Height="32"
+                          VerticalAlignment="Center" Toggled="MonitorSwitch_Toggled"
+                          ToolTipService.ToolTip="开启后收到对方新消息立即判读并写回" />
+            <Border Width="1" Height="16" Margin="4,0" VerticalAlignment="Center"
+                    Background="{ThemeResource ControlStrokeColorDefaultBrush}" />
+            <TextBlock Text="间隔" FontSize="12" VerticalAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <ComboBox x:Name="IntervalBox" Width="96" Height="32" VerticalAlignment="Center"
+                      SelectionChanged="Interval_Changed" ToolTipService.ToolTip="监听轮询间隔">
+                <ComboBoxItem Content="2 秒" />
+                <ComboBoxItem Content="5 秒" />
+                <ComboBoxItem Content="10 秒" />
+                <ComboBoxItem Content="30 秒" />
+                <ComboBoxItem Content="60 秒" />
+            </ComboBox>
+            <Border Width="1" Height="16" Margin="4,0" VerticalAlignment="Center"
+                    Background="{ThemeResource ControlStrokeColorDefaultBrush}" />
+            <TextBlock Text="上下文" FontSize="12" VerticalAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <ComboBox x:Name="ContextTurnsBox" Width="120" Height="32" VerticalAlignment="Center"
+                      SelectionChanged="ContextTurnsBox_SelectionChanged"
+                      ToolTipService.ToolTip="判读时随消息一起送入的最近消息条数">
+                <ComboBoxItem Content="30 条" />
+                <ComboBoxItem Content="50 条" />
+                <ComboBoxItem Content="100 条" />
+                <ComboBoxItem Content="全部（最多 2000 条）" />
+            </ComboBox>
+        </StackPanel>
+
+        <InfoBar x:Name="Status" Grid.Row="3" IsOpen="False" Severity="Informational" CloseButtonClick="Status_Close" />
+
+        <Grid Grid.Row="4">
+            <!--  会话列表（判读结果以对话框呈现，不再占用右侧空间）  -->
+            <Grid RowSpacing="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <AutoSuggestBox x:Name="SessionSearchBox" PlaceholderText="搜索会话名称或标识"
+                                    QueryIcon="Find" TextChanged="Search_TextChanged" />
+                    <ComboBox Grid.Column="1" x:Name="KindBox" Width="110" Height="32" VerticalAlignment="Center"
+                              SelectedIndex="0"
+                              SelectionChanged="Kind_SelectionChanged">
+                        <ComboBoxItem Content="全部" />
+                        <ComboBoxItem Content="群聊" />
+                        <ComboBoxItem Content="单聊" />
+                    </ComboBox>
+                </Grid>
+
+                <Grid Grid.Row="1" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <CheckBox x:Name="SelectAllBox" Content="全选当前结果" Click="SelectAll_Click" />
+                        <TextBlock x:Name="SelectedText" VerticalAlignment="Center" FontSize="12"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <HyperlinkButton Content="清空" Click="ClearSelection_Click" Padding="2,0" />
+                        <TextBlock x:Name="SummaryText" VerticalAlignment="Center" FontSize="12"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                        <Button Padding="12,0" Content="开启所选" Click="EnableSelected_Click" Height="32" />
+                        <Button Padding="12,0" Content="关闭所选" Click="DisableSelected_Click" Height="32" />
+                    </StackPanel>
+                </Grid>
+
+                <Border Grid.Row="2" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8"
+                        BorderThickness="1" BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}">
+                    <ListView x:Name="SessionList" SelectionMode="Single" SelectionChanged="Session_SelectionChanged"
+                              ScrollViewer.HorizontalScrollMode="Disabled"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="MinHeight" Value="0" />
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Padding="12,10" ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox Grid.Column="0" MinWidth="0" VerticalAlignment="Center"
+                                              IsChecked="{Binding IsSelected, Mode=TwoWay}" Click="RowSelect_Click" />
+                                    <Border Grid.Column="1" Width="36" Height="36" CornerRadius="6"
+                                            Background="{Binding AvatarBrush}" VerticalAlignment="Center">
+                                        <Grid>
+                                            <TextBlock Text="{Binding Initial}" Foreground="White" FontSize="16"
+                                                       FontWeight="SemiBold" HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       Visibility="{Binding InitialVisibility}" />
+                                            <Image Source="{Binding AvatarImage}" Stretch="UniformToFill"
+                                                   Visibility="{Binding AvatarVisibility}" />
+                                        </Grid>
+                                    </Border>
+                                    <StackPanel Grid.Column="2" Spacing="2" VerticalAlignment="Center" MinWidth="120">
+                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock FontSize="12" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   Text="{Binding Subtitle}" />
+                                    </StackPanel>
+                                    <Button Height="32" Grid.Column="3" Content="{Binding ToggleLabel}"
+                                            Click="Toggle_Click"
+                                            CornerRadius="14" Padding="14,4" MinWidth="92" VerticalAlignment="Center"
+                                            Background="Transparent" BorderThickness="1"
+                                            BorderBrush="{Binding ToggleBorderBrush}"
+                                            Foreground="{Binding ToggleForeground}"
+                                            ToolTipService.ToolTip="切换该会话的实时监听" />
+                                    <Button Height="32" Grid.Column="4" Click="AnalyzeRow_Click"
+                                            VerticalAlignment="Center"
+                                            Background="Transparent" BorderThickness="0" Padding="8,4"
+                                            ToolTipService.ToolTip="判读该会话对方最新消息">
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <FontIcon Glyph="" FontSize="12" />
+                                            <TextBlock Text="分析" FontSize="12" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Height="32" Grid.Column="5" Click="RecordsRow_Click"
+                                            VerticalAlignment="Center"
+                                            Background="Transparent" BorderThickness="0" Padding="8,4"
+                                            ToolTipService.ToolTip="查看该会话的判读记录">
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <FontIcon Glyph="" FontSize="12" />
+                                            <TextBlock Text="记录" FontSize="12" />
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Border>
+
+                <StackPanel x:Name="EmptyPanel" Grid.Row="2" Spacing="8" VerticalAlignment="Center">
+                    <TextBlock x:Name="EmptyHint" FontSize="12" TextWrapping="Wrap" HorizontalAlignment="Center"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <Button Height="32" Padding="12,0" Click="Reconnect_Click" Content="重新连接微信数据"
+                            HorizontalAlignment="Center" />
+                </StackPanel>
+            </Grid>
+
+            <!--  判读结果：不展示消息原文  -->
+        </Grid>
+    </Grid>
+</Page>

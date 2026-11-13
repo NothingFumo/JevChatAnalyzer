@@ -1,27 +1,101 @@
 <Page
     x:Class="JevChatAnalyzer.App.Views.HistoryPage"
+    NavigationCacheMode="Required"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
     <Grid Padding="12" RowSpacing="8">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Click="Refresh_Click">刷新</Button>
-            <Button Click="Delete_Click">删除选中</Button>
-        </StackPanel>
-        <ListView Grid.Row="1" x:Name="HistoryList" SelectionMode="Single">
-            <ListView.ItemTemplate>
-                <DataTemplate>
-                    <StackPanel Padding="6" Spacing="2">
-                        <TextBlock FontWeight="SemiBold" Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
-                        <TextBlock FontSize="13" Text="{Binding Summary}" TextWrapping="Wrap"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{Binding Meta}"/>
-                    </StackPanel>
-                </DataTemplate>
-            </ListView.ItemTemplate>
-        </ListView>
+
+        <!--  工具条：搜索 + 写回状态筛选  -->
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <AutoSuggestBox x:Name="SearchBox" PlaceholderText="搜索会话名称或判读摘要"
+                            QueryIcon="Find" TextChanged="Filter_Changed" />
+            <ComboBox Grid.Column="1" x:Name="StateBox" Width="120" Height="32" VerticalAlignment="Center"
+                      SelectedIndex="0"
+                      SelectionChanged="Filter_Changed">
+                <ComboBoxItem Content="全部状态" />
+                <ComboBoxItem Content="已写回" />
+                <ComboBoxItem Content="已撤销" />
+                <ComboBoxItem Content="待写回" />
+            </ComboBox>
+            <Button Padding="12,0" Grid.Column="2" Click="Refresh_Click" Height="32">刷新</Button>
+            <TextBlock Grid.Column="3" x:Name="CountText" VerticalAlignment="Center" FontSize="12"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Grid>
+
+        <!--  记录列表：会话名 + 判读摘要 + 写回状态，不展示消息原文  -->
+        <Border Grid.Row="1" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8"
+                BorderThickness="1" BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}">
+            <ListView x:Name="HistoryList" SelectionMode="None">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="MinHeight" Value="0" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Padding="12,10" ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="36" Height="36" CornerRadius="6"
+                                    Background="{Binding AvatarBrush}" VerticalAlignment="Center">
+                                <Grid>
+                                    <TextBlock Text="{Binding Initial}" Foreground="White" FontSize="16"
+                                               FontWeight="SemiBold" HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Visibility="{Binding InitialVisibility}" />
+                                    <Image Source="{Binding AvatarImage}" Stretch="UniformToFill"
+                                           Visibility="{Binding AvatarVisibility}" />
+                                </Grid>
+                            </Border>
+                            <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding Summary}" FontSize="12" TextWrapping="Wrap" MaxLines="2"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Text="{Binding Meta}" FontSize="11"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <Border Grid.Column="2" CornerRadius="12" Padding="10,3" VerticalAlignment="Center"
+                                    BorderThickness="1"
+                                    BorderBrush="{Binding StateBorderBrush}" Background="Transparent">
+                                <TextBlock Text="{Binding StateLabel}" FontSize="11"
+                                           Foreground="{Binding StateForeground}" />
+                            </Border>
+                            <Button Grid.Column="3" Click="Detail_Click" VerticalAlignment="Center"
+                                    Width="32" Height="28" Padding="0"
+                                    Background="Transparent" BorderThickness="0"
+                                    ToolTipService.ToolTip="查看这条判读的七题明细">
+                                <FontIcon Glyph="&#xE946;" FontSize="14" />
+                            </Button>
+                            <Button Grid.Column="4" Click="Delete_Click" VerticalAlignment="Center"
+                                    Width="32" Height="28" Padding="0"
+                                    Background="Transparent" BorderThickness="0"
+                                    ToolTipService.ToolTip="删除这条判读记录（不影响微信数据）">
+                                <FontIcon Glyph="&#xE74D;" FontSize="14" />
+                            </Button>
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Border>
     </Grid>
 </Page>

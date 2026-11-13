@@ -13,9 +13,9 @@
                             IconSource="assets/app.ico">
                 <tb:TaskbarIcon.ContextFlyout>
                     <MenuFlyout AreOpenCloseAnimationsEnabled="False">
-                        <MenuFlyoutItem x:Name="TrayShowItem" Text="显示主窗口"/>
-                        <MenuFlyoutSeparator/>
-                        <MenuFlyoutItem x:Name="TrayExitItem" Text="退出"/>
+                        <MenuFlyoutItem x:Name="TrayShowItem" Text="显示主窗口" />
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem x:Name="TrayExitItem" Text="退出" />
                     </MenuFlyout>
                 </tb:TaskbarIcon.ContextFlyout>
             </tb:TaskbarIcon>

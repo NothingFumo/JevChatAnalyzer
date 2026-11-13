@@ -1,36 +1,41 @@
 <Page
     x:Class="JevChatAnalyzer.App.Views.SettingsPage"
+    NavigationCacheMode="Required"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <Grid Padding="12">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="200"/>
-            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="200" />
+            <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
         <!-- 左侧 Tab 分区 -->
         <ListView Grid.Column="0" x:Name="TabList" SelectionChanged="TabList_SelectionChanged">
             <ListViewItem Tag="keys" IsSelected="True">
-                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE192;" FontSize="16"/><TextBlock Text="微信密钥"/></StackPanel>
-            </ListViewItem>
-            <ListViewItem Tag="judge">
-                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE945;" FontSize="16"/><TextBlock Text="判读后端"/></StackPanel>
-            </ListViewItem>
-            <ListViewItem Tag="dialog">
-                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE8BD;" FontSize="16"/><TextBlock Text="对话与监听"/></StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE192;" FontSize="16" /><TextBlock Text="微信密钥" />
+                </StackPanel>
             </ListViewItem>
             <ListViewItem Tag="models">
-                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE8D6;" FontSize="16"/><TextBlock Text="本地引擎模型"/></StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE8D6;" FontSize="16" /><TextBlock Text="本地 laya 判读" />
+                </StackPanel>
             </ListViewItem>
             <ListViewItem Tag="voice">
-                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE720;" FontSize="16"/><TextBlock Text="语音转写"/></StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE720;" FontSize="16" /><TextBlock Text="语音转写" />
+                </StackPanel>
             </ListViewItem>
             <ListViewItem Tag="privacy">
-                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE72E;" FontSize="16"/><TextBlock Text="隐私与写回"/></StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE72E;" FontSize="16" /><TextBlock Text="隐私与写回" />
+                </StackPanel>
             </ListViewItem>
             <ListViewItem Tag="about">
-                <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE946;" FontSize="16"/><TextBlock Text="关于"/></StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE946;" FontSize="16" /><TextBlock Text="关于" />
+                </StackPanel>
             </ListViewItem>
         </ListView>
 
@@ -41,130 +46,175 @@
                 <StackPanel x:Name="PaneKeys" Spacing="12">
                     <TextBlock FontSize="20" FontWeight="SemiBold">微信密钥</TextBlock>
                     <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Text="自动读取通过 rwk.dll 对已登录微信做只读内存扫描（不注入、不写入）。密钥以 DPAPI 加密保存在本机，与当前 Windows 用户绑定。"/>
+                               Text="自动读取通过 rwk.dll 对已登录微信做只读内存扫描（不注入、不写入）。密钥以 DPAPI 加密保存在本机，与当前 Windows 用户绑定。" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button x:Name="AutoReadButton" Click="AutoRead_Click" Style="{StaticResource AccentButtonStyle}">自动读取（需微信登录）</Button>
-                        <Button x:Name="ManualSaveButton" Click="ManualSave_Click">保存手动输入</Button>
+                        <Button Padding="12,0" x:Name="AutoReadButton" Height="32" Click="AutoRead_Click">自动读取（需微信登录）</Button>
+                        <Button Padding="12,0" x:Name="ManualSaveButton" Height="32" Click="ManualSave_Click">保存手动输入</Button>
+                        <Button Padding="12,0" x:Name="ElevateButton" Height="32" Click="Elevate_Click"
+                                Visibility="Collapsed" ToolTipService.ToolTip="微信以管理员身份运行时，读取密钥需要同等权限">
+                            以管理员身份重启
+                        </Button>
                     </StackPanel>
+                    <TextBlock Text="账号" FontWeight="SemiBold" />
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8"
+                            BorderThickness="1" BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}">
+                        <ListView x:Name="AccountList" SelectionMode="None" MaxHeight="220"
+                                  ScrollViewer.HorizontalScrollMode="Disabled"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="Padding" Value="0" />
+                                    <Setter Property="MinHeight" Value="0" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Padding="10,8" ColumnSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Width="32" Height="32" CornerRadius="6"
+                                                Background="{Binding AvatarBrush}"
+                                                VerticalAlignment="Center">
+                                            <Grid>
+                                                <TextBlock Text="{Binding Initial}" Foreground="White" FontSize="14"
+                                                           FontWeight="SemiBold" HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center" />
+                                                <Image Source="{Binding AvatarImage}" Stretch="UniformToFill"
+                                                       Visibility="{Binding AvatarVisibility}" />
+                                            </Grid>
+                                        </Border>
+                                        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Subtitle}" FontSize="11"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </StackPanel>
+                                        <Button Grid.Column="2" Content="{Binding ActionLabel}"
+                                                Click="AccountConnect_Click"
+                                                VerticalAlignment="Center" Height="32" MinWidth="64" Padding="12,0"
+                                                FontSize="12" />
+                                        <Button Grid.Column="3" Click="AccountEdit_Click" VerticalAlignment="Center"
+                                                Width="32" Height="32" Padding="0" Background="Transparent"
+                                                BorderThickness="0"
+                                                ToolTipService.ToolTip="编辑账号（昵称 / 数据目录）">
+                                            <FontIcon Glyph="&#xE70F;" FontSize="14" />
+                                        </Button>
+                                        <Button Grid.Column="4" Click="AccountDelete_Click" VerticalAlignment="Center"
+                                                Width="32" Height="32" Padding="0" FontSize="12"
+                                                Background="Transparent" BorderThickness="0"
+                                                ToolTipService.ToolTip="从保管库删除该账号">
+                                            <FontIcon Glyph="&#xE74D;" FontSize="12" />
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Border>
+                    <TextBlock x:Name="AccountHint" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
                     <StackPanel Spacing="4">
                         <TextBlock>wxid</TextBlock>
-                        <TextBox x:Name="ManualWxId" PlaceholderText="wxid_xxxx"/>
+                        <TextBox x:Name="ManualWxId" PlaceholderText="wxid_xxxx" />
                     </StackPanel>
                     <StackPanel Spacing="4">
                         <TextBlock>dbKey（64 位 hex）</TextBlock>
-                        <TextBox x:Name="ManualDbKey" PlaceholderText="48b985c8..."/>
+                        <TextBox x:Name="ManualDbKey" PlaceholderText="48b985c8..." />
                     </StackPanel>
                     <StackPanel Spacing="4">
-                        <TextBlock>数据目录（可选，默认自动定位）</TextBlock>
-                        <TextBox x:Name="ManualDataPath" PlaceholderText="C:\Users\你\Documents\xwechat_files\wxid_xxxx_abcd"/>
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="ManualDataPath" Header="数据目录（可选，默认自动定位）"
+                                     PlaceholderText="C:\Users\你\Documents\xwechat_files\账号目录" />
+                            <Button Padding="12,0" Grid.Column="1" Content="浏览…" Click="BrowseDataPath_Click"
+                                    Height="32"
+                                    ToolTipService.ToolTip="选择该账号的微信数据目录" />
+                        </Grid>
                     </StackPanel>
-                    <TextBlock x:Name="KeyStatus" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                </StackPanel>
-
-                <!--  判读后端  -->
-                <StackPanel x:Name="PaneJudge" Spacing="12" Visibility="Collapsed">
-                    <TextBlock FontSize="20" FontWeight="SemiBold">判读后端</TextBlock>
-                    <RadioButton x:Name="BackendCloud" GroupName="backend" Content="云端服务 云端（api.example.invalid）"/>
-                    <RadioButton x:Name="BackendLocal" GroupName="backend" Content="laya 进程内（本地模型，离线可用）"/>
-                    <RadioButton x:Name="BackendLayaServer" GroupName="backend" Content="本地 HTTP 服务 独立服务（同协议 HTTP）"/>
-                    <StackPanel Spacing="4">
-                        <TextBlock>云端端点</TextBlock>
-                        <TextBox x:Name="CloudEndpointBox"/>
-                    </StackPanel>
-                    <StackPanel Spacing="4">
-                        <TextBlock>模型（留空用服务端默认，如 jev-latest）</TextBlock>
-                        <TextBox x:Name="CloudModelBox"/>
-                    </StackPanel>
-                    <ToggleSwitch x:Name="CloudSanitizeSwitch" OnContent="发送前脱敏（推荐）" OffContent="发送前脱敏：关"/>
-                    <StackPanel Spacing="4">
-                        <TextBlock>本地 HTTP 服务 地址</TextBlock>
-                        <TextBox x:Name="LayaServerBox"/>
-                    </StackPanel>
-                    <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Text="云端 API key 从环境变量 CLOUD_API_KEY 读取；连续 3 次失败自动熔断 30 秒并降级到备用后端。"/>
-                </StackPanel>
-
-                <!--  对话与监听  -->
-                <StackPanel x:Name="PaneDialog" Spacing="12" Visibility="Collapsed">
-                    <TextBlock FontSize="20" FontWeight="SemiBold">对话与监听</TextBlock>
-                    <ToggleSwitch x:Name="MonitorSwitch" OnContent="实时监听：收到对方新消息立即分析并入待写队列" OffContent="实时监听：关（仅在分析页手动触发）"/>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <StackPanel Spacing="4" Width="200">
-                            <TextBlock>监听轮询间隔（秒，最小 2）</TextBlock>
-                            <NumberBox x:Name="MonitorIntervalBox" Minimum="2" Maximum="300" SmallChange="1" Value="5"/>
-                        </StackPanel>
-                        <StackPanel Spacing="4" Width="200">
-                            <TextBlock>判读上下文条数</TextBlock>
-                            <NumberBox x:Name="ContextTurnsBox" Minimum="1" Maximum="200" SmallChange="5" Value="20"/>
-                        </StackPanel>
-                    </StackPanel>
-                    <StackPanel Spacing="4">
-                        <TextBlock>监听会话白名单（sessionId，逗号或换行分隔；留空 = 全部活跃会话）</TextBlock>
-                        <TextBox x:Name="MonitorSessionsBox" AcceptsReturn="True" Height="80"
-                                 PlaceholderText="44332855279@chatroom&#x0A;wxid_xxxxxxxx"/>
-                    </StackPanel>
-                    <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Text="监听在「打开微信数据」后自动开始：轮询消息库为只读访问；发现对方新消息立即判读并把结论加入待写队列，微信退出后自动落库为引用消息。白名单留空时监听最近活跃的 50 个会话。"/>
+                    <TextBlock x:Name="KeyStatus" TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
 
                 <!--  本地引擎模型  -->
                 <StackPanel x:Name="PaneModels" Spacing="12" Visibility="Collapsed">
-                    <TextBlock FontSize="20" FontWeight="SemiBold">laya 本地引擎模型</TextBlock>
+                    <TextBlock FontSize="20" FontWeight="SemiBold">本地 laya 判读</TextBlock>
                     <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Text="laya-multilingual（mmBERT-base，约 700MB）从 HuggingFace convaiinnovations/laya-multilingual 下载 PyTorch 权重，经 NLaya/TorchSharp 进程内推理，无需联网即可判读。"/>
+                               Text="判读只走本机进程内的 laya-multilingual（mmBERT-base，约 700MB，从 HuggingFace convaiinnovations/laya-multilingual 下载 PyTorch 权重，经 NLaya/TorchSharp 推理）：离线可用、不生成文本、消息不出本机。" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button x:Name="DownloadLayaButton" Click="DownloadLaya_Click" Style="{StaticResource AccentButtonStyle}">下载模型</Button>
-                        <Button x:Name="CancelLayaButton" Click="CancelLaya_Click" IsEnabled="False">取消</Button>
-                        <Button Click="OpenLayaModelDir_Click">打开模型目录</Button>
+                        <Button Padding="12,0" x:Name="DownloadLayaButton" Height="32" Click="DownloadLaya_Click">下载模型</Button>
+                        <Button Padding="12,0" x:Name="CancelLayaButton" Height="32" Click="CancelLaya_Click"
+                                IsEnabled="False">
+                            取消
+                        </Button>
+                        <Button Padding="12,0" Click="OpenLayaModelDir_Click" Height="32">打开模型目录</Button>
                     </StackPanel>
-                    <ProgressBar x:Name="LayaProgress" Maximum="100" Value="0"/>
-                    <TextBlock x:Name="LayaModelStatus" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                    <ProgressBar x:Name="LayaProgress" Maximum="100" Value="0" />
+                    <TextBlock x:Name="LayaModelStatus" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap" />
                 </StackPanel>
 
                 <!--  语音转写  -->
                 <StackPanel x:Name="PaneVoice" Spacing="12" Visibility="Collapsed">
                     <TextBlock FontSize="20" FontWeight="SemiBold">语音转写</TextBlock>
-                    <ToggleSwitch x:Name="VoiceSwitch" OnContent="启用语音消息转写" OffContent="语音转写：关"/>
+                    <ToggleSwitch x:Name="VoiceSwitch" OnContent="启用语音消息转写" OffContent="语音转写：关" />
                     <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Text="SenseVoiceSmall int8（约 245MB，modelscope 下载）+ 微信同源 Silk 解码，全程本地推理。"/>
+                               Text="SenseVoiceSmall int8（约 245MB，modelscope 下载）+ 微信同源 Silk 解码，全程本地推理。" />
                     <StackPanel Spacing="4">
                         <TextBlock>模型目录（空 = 文档\JevChatAnalyzer\models\sensevoice，修改需重启）</TextBlock>
-                        <TextBox x:Name="VoiceModelDirBox"/>
+                        <TextBox x:Name="VoiceModelDirBox" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button x:Name="DownloadVoiceButton" Click="DownloadVoice_Click" Style="{StaticResource AccentButtonStyle}">下载语音模型</Button>
-                        <Button Click="OpenVoiceModelDir_Click">打开模型目录</Button>
+                        <Button Padding="12,0" x:Name="DownloadVoiceButton" Height="32" Click="DownloadVoice_Click">下载语音模型</Button>
+                        <Button Padding="12,0" Click="OpenVoiceModelDir_Click" Height="32">打开模型目录</Button>
                     </StackPanel>
-                    <ProgressBar x:Name="VoiceProgress" Maximum="100" Value="0"/>
-                    <TextBlock x:Name="VoiceModelStatus" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                    <ProgressBar x:Name="VoiceProgress" Maximum="100" Value="0" />
+                    <TextBlock x:Name="VoiceModelStatus" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap" />
                 </StackPanel>
 
                 <!--  隐私与写回  -->
                 <StackPanel x:Name="PanePrivacy" Spacing="12" Visibility="Collapsed">
                     <TextBlock FontSize="20" FontWeight="SemiBold">隐私与写回</TextBlock>
-                    <ToggleSwitch x:Name="WriteBackSwitch" OnContent="自动写回：判读对方消息后入队，微信退出时自动落库" OffContent="自动写回：关（仅分析，不写库）"/>
+                    <ToggleSwitch x:Name="WriteBackSwitch" OnContent="自动写回：判读对方消息后入队并实时落库" OffContent="自动写回：关（仅分析，不写库）" />
                     <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Text="写回会把判读结论作为引用消息挂在「对方发送的消息」上。判读（微信运行中，只读）后进入待写队列，检测到微信完全退出即自动落库；每次写入前自动整库备份（SHA-256 记账），支持按行撤销与整库还原。"/>
+                               Text="写回把判读结论写进对方那条消息的引用块（不改正文、不新增气泡）。判读后先记账再实时落库；改写前的原文快照留在判读台账里，支持按条撤销与逐条还原到本应用修改之前（不复制整库）。" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Click="OpenBackups_Click">打开备份目录</Button>
-                        <Button x:Name="ListWriteBacksButton" Click="ListWriteBacks_Click">查看写回台账</Button>
+                        <Button Padding="12,0" Click="RestoreAll_Click" Height="32">还原到修改前</Button>
+                        <Button Padding="12,0" x:Name="ListWriteBacksButton" Click="ListWriteBacks_Click" Height="32">查看写回台账</Button>
                     </StackPanel>
-                    <TextBlock x:Name="WriteBackListText" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock x:Name="WriteBackListText" TextWrapping="Wrap" FontSize="12"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Text="判读历史以 AES-256-GCM 加密存储在本机（密钥经 DPAPI 绑定当前用户）。"/>
+                               Text="判读台账（判读记录 + 写回状态）以 SQLCipher 加密存储在本机（文件密钥经 DPAPI 绑定当前用户）。" />
                 </StackPanel>
 
                 <!--  关于  -->
                 <StackPanel x:Name="PaneAbout" Spacing="8" Visibility="Collapsed">
                     <TextBlock FontSize="20" FontWeight="SemiBold">关于</TextBlock>
-                    <TextBlock Text="JevChatAnalyzer — 微信 4.x 数据库直读的 Jev 聊天判读工具"/>
-                    <TextBlock Text="组件：rwk.dll（密钥只读提取）· sqlcipher.dll（微信同源 SQLCipher 3.27.2）· silk_decoder.dll（Silk 解码）· sherpa-onnx（SenseVoice 转写）· HttpClient（线协议）· NLaya/TorchSharp（本地 laya）" TextWrapping="Wrap"/>
-                    <TextBlock Text="原始微信数据一律只读；所有写操作均在本应用数据目录内，写回功能除外（显式确认 + 自动备份）。" TextWrapping="Wrap"/>
+                    <TextBlock Text="JevChatAnalyzer — 微信 4.x 数据库直读的 Jev 聊天判读工具" />
+                    <TextBlock
+                        Text="组件：rwk.dll（密钥只读提取）· sqlcipher.dll（微信同源 SQLCipher 3.27.2）· silk_decoder.dll（Silk 解码）· sherpa-onnx（SenseVoice 转写）· NLaya/TorchSharp（本地 laya 判读）"
+                        TextWrapping="Wrap" />
+                    <TextBlock Text="原始微信数据一律只读；所有写操作均在本应用数据目录内，写回功能除外（显式确认 + 自动备份）。" TextWrapping="Wrap" />
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button x:Name="SaveSettingsButton" Click="Save_Click" Style="{StaticResource AccentButtonStyle}">保存设置</Button>
-                    <TextBlock x:Name="SaveHint" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <Button Padding="12,0" x:Name="SaveSettingsButton" Click="Save_Click" Height="32"
+                            Style="{StaticResource AccentButtonStyle}">
+                        保存设置
+                    </Button>
+                    <TextBlock x:Name="SaveHint" VerticalAlignment="Center"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>

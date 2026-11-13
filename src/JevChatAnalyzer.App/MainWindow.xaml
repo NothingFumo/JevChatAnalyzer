@@ -4,14 +4,18 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="JevChatAnalyzer">
     <Grid>
+        <!--  Win10 Fluent 标准导航：自适应（窄屏图标栏 / 宽屏展开），设置固定在左下角  -->
         <NavigationView x:Name="Nav"
+                        PaneDisplayMode="Auto"
+                        OpenPaneLength="220"
+                        CompactPaneLength="48"
                         IsBackButtonVisible="Collapsed"
-                        PaneDisplayMode="LeftCompact"
+                        IsSettingsVisible="True"
+                        IsPaneToggleButtonVisible="True"
                         SelectionChanged="Nav_SelectionChanged">
             <NavigationView.MenuItems>
-                <NavigationViewItem Content="会话判读" Tag="chat" Icon="Comment"/>
-                <NavigationViewItem Content="判读历史" Tag="history" Icon="Clock"/>
-                <NavigationViewItem Content="设置" Tag="settings" Icon="Setting"/>
+                <NavigationViewItem Content="对话与监听" Tag="sessions" Icon="Comment" />
+                <NavigationViewItem Content="判读历史" Tag="history" Icon="Clock" />
             </NavigationView.MenuItems>
             <Frame x:Name="ContentFrame" />
         </NavigationView>

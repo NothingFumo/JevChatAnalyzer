@@ -1,15 +1,13 @@
-using Microsoft.UI.Xaml;
 using H.NotifyIcon;
-using Microsoft.UI.Xaml.Controls;
 using JevChatAnalyzer.App.Services;
-using JevChatAnalyzer.Core.Judge.NlayaJudge;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 
 namespace JevChatAnalyzer.App;
 
 public partial class App : Application
 {
-    public static Window? MainAppWindow { get; private set; }
-
     private static Mutex? _singleInstanceMutex;
     private TaskbarIcon? _tray;
 
@@ -32,48 +30,46 @@ public partial class App : Application
             {
                 // 日志失败不能再次抛出
             }
+
             e.Handled = true; // 记录后继续运行，避免闪退
         };
     }
 
+    public static Window? MainAppWindow { get; private set; }
+
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         // 单实例：已有实例在运行时直接退出（托盘里找它）
-        _singleInstanceMutex = new Mutex(initiallyOwned: true, @"Local\JevChatAnalyzer.SingleInstance", out var createdNew);
+        _singleInstanceMutex = new Mutex(true, @"Local\JevChatAnalyzer.SingleInstance", out var createdNew);
         if (!createdNew)
         {
             Exit();
             return;
         }
 
-        // 进程内 laya 引擎：模型就绪时注册为判读后端（HTTP 后端永远保留为兜底）
+        // 判读：本地 laya 单实例。模型已就绪时后台预热，把 1-2 秒的引擎加载挪出首次判读。
         var state = AppState.Instance;
-        var nlaya = new NlayaBackend(string.IsNullOrWhiteSpace(state.Settings.NlayaModelDir)
-            ? null
-            : state.Settings.NlayaModelDir);
-        state.RegisterExtraBackends = service =>
-        {
-            if (state.Settings.NlayaEnabled && nlaya.IsModelDownloaded)
-            {
-                service.Register(nlaya);
-            }
-        };
-        state.RebuildJudgeService();
+        _ = state.Judge.WarmupAsync();
 
         MainAppWindow = new MainWindow();
         MainAppWindow.Activate();
 
+        // 启动即自动连接微信数据：后台执行、失败只提示，不阻塞界面也不进入任何模态引导
+        _ = Task.Run(() =>
+        {
+            var message = state.TryAutoConnect();
+            state.ReportStatus(message);
+        });
+
         // 托盘：双击图标显示主窗口；关闭窗口 = 最小化到托盘（不退出，监听/自动写回继续）
         _tray = (TaskbarIcon)Resources["TrayIcon"];
         // H.NotifyIcon 的 WinRT 事件默认禁用（Win10 兼容），官方推荐 Command 方式
-        var doubleClickCommand = new Microsoft.UI.Xaml.Input.XamlUICommand();
+        var doubleClickCommand = new XamlUICommand();
         doubleClickCommand.ExecuteRequested += (_, _) => ShowMainWindow();
         _tray.DoubleClickCommand = doubleClickCommand;
         // Application XAML 不允许挂事件，托盘菜单在代码里接线
         if (_tray.ContextFlyout is MenuFlyout flyout)
-        {
             foreach (var item in flyout.Items.OfType<MenuFlyoutItem>())
-            {
                 switch (item.Name)
                 {
                     case "TrayShowItem":
@@ -83,12 +79,9 @@ public partial class App : Application
                         item.Click += TrayExit_Click;
                         break;
                 }
-            }
-        }
+
         if (MainAppWindow is MainWindow main)
-        {
             main.TrayExitRequested += (_, _) => TrayExit_Click(this, new RoutedEventArgs());
-        }
     }
 
     public void ShowMainWindow()
@@ -97,11 +90,20 @@ public partial class App : Application
         MainAppWindow?.Activate();
     }
 
-    private void TrayShow_Click(object sender, RoutedEventArgs e) => ShowMainWindow();
-
-    private void TrayExit_Click(object sender, RoutedEventArgs e)
+    private void TrayShow_Click(object sender, RoutedEventArgs e)
     {
-        // 正式退出：先停监听/监视器，再释放托盘
+        ShowMainWindow();
+    }
+
+    private async void TrayExit_Click(object sender, RoutedEventArgs e)
+    {
+        await ShutdownAsync();
+    }
+
+    /// <summary>正式退出：停监听、释放判读引擎、释放托盘与单实例互斥量。</summary>
+    public async Task ShutdownAsync()
+    {
+        // 正式退出：先停监听/监视器，再释放判读引擎（约 700MB），最后释放托盘
         try
         {
             AppState.Instance.CloseWeChatData();
@@ -109,6 +111,15 @@ public partial class App : Application
         catch
         {
         }
+
+        try
+        {
+            await AppState.Instance.Judge.DisposeAsync();
+        }
+        catch
+        {
+        }
+
         _tray?.Dispose();
         _singleInstanceMutex?.ReleaseMutex();
         Exit();
