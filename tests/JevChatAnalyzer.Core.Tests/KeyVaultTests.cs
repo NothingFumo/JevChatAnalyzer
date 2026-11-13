@@ -1,5 +1,5 @@
-using Xunit;
 using JevChatAnalyzer.Core.Keys;
+using Xunit;
 
 namespace JevChatAnalyzer.Core.Tests;
 
@@ -7,7 +7,22 @@ public class KeyVaultTests : IDisposable
 {
     private readonly string _tempDir = Path.Combine(Path.GetTempPath(), "jca-tests-" + Guid.NewGuid().ToString("N"));
 
-    private KeyVault CreateVault() => new(Path.Combine(_tempDir, "keys.json"));
+    public void Dispose()
+    {
+        try
+        {
+            Directory.Delete(_tempDir, true);
+        }
+        catch
+        {
+            /* 测试清理失败不影响结果 */
+        }
+    }
+
+    private KeyVault CreateVault()
+    {
+        return new KeyVault(Path.Combine(_tempDir, "keys.json"));
+    }
 
     [Fact]
     public void SaveAndGet_往返保真()
@@ -20,7 +35,7 @@ public class KeyVaultTests : IDisposable
             ImageXorKey = "1a",
             ImageAesKey = "cfcd208495d565ef",
             DataPath = @"C:\xwechat_files\wxid_t1_abcd",
-            WeixinVersion = "4.1.12.55",
+            WeixinVersion = "4.1.12.55"
         });
 
         var entry = vault.Get("wxid_t1");
@@ -71,10 +86,5 @@ public class KeyVaultTests : IDisposable
         Assert.Null(vault.CurrentWxId);
         Assert.Empty(vault.ListWxIds());
         Assert.Null(vault.Get("wxid_t1"));
-    }
-
-    public void Dispose()
-    {
-        try { Directory.Delete(_tempDir, recursive: true); } catch { /* 测试清理失败不影响结果 */ }
     }
 }

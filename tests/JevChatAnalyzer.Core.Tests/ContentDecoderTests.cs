@@ -5,7 +5,10 @@ namespace JevChatAnalyzer.Core.Tests;
 
 public class ContentDecoderTests
 {
-    private static string ResolveName(string id) => id == "wxid_bob" ? "小明" : id;
+    private static string ResolveName(string id)
+    {
+        return id == "wxid_bob" ? "小明" : id;
+    }
 
     [Theory]
     [InlineData(1, 1, null)]
@@ -41,23 +44,23 @@ public class ContentDecoderTests
     public void Decode_引用消息解析refermsg()
     {
         const string xml = """
-            <?xml version="1.0"?>
-            <msg>
-              <appmsg appid="" sdkver="0">
-                <title>这个方案我看行</title>
-                <type>57</type>
-                <refermsg>
-                  <type>1</type>
-                  <svrid>778899001</svrid>
-                  <fromusr>wxid_me</fromusr>
-                  <chatusr>wxid_bob</chatusr>
-                  <displayname>小明</displayname>
-                  <content>明天下午三点开会怎么样</content>
-                  <createtime>1759900000</createtime>
-                </refermsg>
-              </appmsg>
-            </msg>
-            """;
+                           <?xml version="1.0"?>
+                           <msg>
+                             <appmsg appid="" sdkver="0">
+                               <title>这个方案我看行</title>
+                               <type>57</type>
+                               <refermsg>
+                                 <type>1</type>
+                                 <svrid>778899001</svrid>
+                                 <fromusr>wxid_me</fromusr>
+                                 <chatusr>wxid_bob</chatusr>
+                                 <displayname>小明</displayname>
+                                 <content>明天下午三点开会怎么样</content>
+                                 <createtime>1759900000</createtime>
+                               </refermsg>
+                             </appmsg>
+                           </msg>
+                           """;
 
         var decoded = ContentDecoder.Decode(244813135921, xml, ResolveName);
 
@@ -81,6 +84,21 @@ public class ContentDecoderTests
         var decoded = ContentDecoder.Decode(244813135921, xml, ResolveName);
 
         Assert.Equal("小明", decoded.Quote!.FromDisplayName);
+    }
+
+    [Fact]
+    public void Decode_引用消息的refermsg排在type之前_仍识别为引用()
+    {
+        // 真实库实测：30274 条引用消息里有 425 条把 refermsg 放在外层 type 之前
+        var xml = "<msg><appmsg><title>我同意</title>" +
+                  "<refermsg><svrid>3</svrid><chatusr>wxid_bob</chatusr><content>周末去吗</content>" +
+                  "<type>1</type></refermsg><type>57</type></appmsg></msg>";
+
+        var decoded = ContentDecoder.Decode(244813135921, xml, ResolveName);
+
+        Assert.Equal(57, decoded.AppMsgSubType);
+        Assert.Equal("我同意", decoded.DisplayText);
+        Assert.Equal("周末去吗", decoded.Quote!.Content);
     }
 
     [Fact]
@@ -122,26 +140,26 @@ public class ContentDecoderTests
         // 2026-10-08 群聊 44332855279@chatroom 真实样本（local_id=50041，zstd 解压后）：
         // message_content = 发送者前缀行 + 完整外层 msg XML
         const string raw = """
-            wxid_9kdqxb1ohd3521:
-            <?xml version="1.0"?>
-            <msg>
-            	<appmsg appid="" sdkver="0">
-            		<title>好嘟好嘟 哈哈哈~</title>
-            		<type>57</type>
-            		<refermsg>
-            			<content>嫁给我</content>
-            			<createtime>1791472237</createtime>
-            			<displayname>雪婧衣</displayname>
-            			<fromusr>44332855279@chatroom</fromusr>
-            			<svrid>6433551728542999001</svrid>
-            			<type>1</type>
-            			<chatusr>wxid_rd5wa9yeow9021</chatusr>
-            		</refermsg>
-            	</appmsg>
-            	<fromusername>wxid_9kdqxb1ohd3521</fromusername>
-            	<scene>0</scene>
-            </msg>
-            """;
+                           wxid_9kdqxb1ohd3521:
+                           <?xml version="1.0"?>
+                           <msg>
+                           	<appmsg appid="" sdkver="0">
+                           		<title>好嘟好嘟 哈哈哈~</title>
+                           		<type>57</type>
+                           		<refermsg>
+                           			<content>嫁给我</content>
+                           			<createtime>1791472237</createtime>
+                           			<displayname>雪婧衣</displayname>
+                           			<fromusr>44332855279@chatroom</fromusr>
+                           			<svrid>6433551728542999001</svrid>
+                           			<type>1</type>
+                           			<chatusr>wxid_rd5wa9yeow9021</chatusr>
+                           		</refermsg>
+                           	</appmsg>
+                           	<fromusername>wxid_9kdqxb1ohd3521</fromusername>
+                           	<scene>0</scene>
+                           </msg>
+                           """;
         var (content, prefixSender) = ChatStore.StripSenderPrefix(raw);
         Assert.Equal("wxid_9kdqxb1ohd3521", prefixSender);
 
@@ -155,6 +173,6 @@ public class ContentDecoderTests
     [Fact]
     public void ParseReferMsg_空节点返回null()
     {
-        Assert.Null(ContentDecoder.ParseReferMsg(null, null));
+        Assert.Null(QuoteMessage.ParseReferMsg(null));
     }
 }

@@ -1,11 +1,23 @@
-using Xunit;
 using JevChatAnalyzer.Core.Keys;
+using Xunit;
 
 namespace JevChatAnalyzer.Core.Tests;
 
 public class WeChatDataLocatorTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "jca-xwechat-" + Guid.NewGuid().ToString("N"));
+
+    public void Dispose()
+    {
+        try
+        {
+            Directory.Delete(_root, true);
+        }
+        catch
+        {
+            /* 测试清理失败不影响结果 */
+        }
+    }
 
     private string MakeAccountDir(string name)
     {
@@ -67,10 +79,5 @@ public class WeChatDataLocatorTests : IDisposable
 
         Assert.Equal(account, locator.ResolveAccountDir(account));
         Assert.Null(locator.ResolveAccountDir("wxid_missing"));
-    }
-
-    public void Dispose()
-    {
-        try { Directory.Delete(_root, recursive: true); } catch { /* 测试清理失败不影响结果 */ }
     }
 }

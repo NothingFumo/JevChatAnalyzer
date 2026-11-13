@@ -1,33 +1,33 @@
-using Xunit;
 using JevChatAnalyzer.Core.Keys;
+using Xunit;
 
 namespace JevChatAnalyzer.Core.Tests;
 
 public class RwkKeyReaderTests
 {
     private const string SampleJson = """
-        {
-          "ok": true,
-          "abi": 1,
-          "weixinVersion": "4.1.12.55",
-          "users": [
-            {
-              "wxId": "wxid_abc123",
-              "name": "张三",
-              "number": "zhangsan_wx",
-              "phone": "138****0000",
-              "dbKey": "48b985c8a3a54b0f9f8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f",
-              "imageXorKey": "1a",
-              "imageAesKey": "cfcd208495d565ef",
-              "dataPath": "C:\\Users\\u\\Documents\\xwechat_files\\wxid_abc123_abcd"
-            },
-            {
-              "wxId": "wxid_bad",
-              "dbKey": "not-a-hex-key"
-            }
-          ]
-        }
-        """;
+                                      {
+                                        "ok": true,
+                                        "abi": 1,
+                                        "weixinVersion": "4.1.12.55",
+                                        "users": [
+                                          {
+                                            "wxId": "wxid_abc123",
+                                            "name": "张三",
+                                            "number": "zhangsan_wx",
+                                            "phone": "138****0000",
+                                            "dbKey": "48b985c8a3a54b0f9f8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f",
+                                            "imageXorKey": "1a",
+                                            "imageAesKey": "cfcd208495d565ef",
+                                            "dataPath": "C:\\Users\\u\\Documents\\xwechat_files\\wxid_abc123_abcd"
+                                          },
+                                          {
+                                            "wxId": "wxid_bad",
+                                            "dbKey": "not-a-hex-key"
+                                          }
+                                        ]
+                                      }
+                                      """;
 
     [Fact]
     public void ParsePayload_解析有效JSON_过滤非法dbKey()
@@ -46,7 +46,8 @@ public class RwkKeyReaderTests
     [Fact]
     public void ParsePayload_大小写不敏感_兼容不同字段命名()
     {
-        var json = """{"WeixinVersion":"4.1.0","Users":[{"WXID":"wxid_x","DBKEY":"ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789"}]}""";
+        var json =
+            """{"WeixinVersion":"4.1.0","Users":[{"WXID":"wxid_x","DBKEY":"ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789"}]}""";
 
         var accounts = RwkKeyReader.ParsePayload(json);
 
