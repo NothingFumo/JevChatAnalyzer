@@ -489,16 +489,6 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private void ListWriteBacks_Click(object sender, RoutedEventArgs e)
-    {
-        var entries = AppState.Instance.Ledger.RecentWriteBacks();
-        WriteBackListText.Text = entries.Count == 0
-            ? "暂无写回记录。"
-            : string.Join("\n", entries.Select(en =>
-                $"{en.WrittenAt:MM-dd HH:mm} {en.WxId} {en.DbFileName}/{en.TableName} 行{en.AnnotatedLocalId} " +
-                $"[{WriteStateLabel.Detail(en.State, en.RevokedAt)}]"));
-    }
-
     // —— 保存 ——
 
     private void Save_Click(object sender, RoutedEventArgs e)
@@ -587,6 +577,8 @@ public sealed partial class SettingsPage : Page
             Regex.Replace(
                 DataPath, @"wxid_[^\\/]+", "wxid_***", RegexOptions.IgnoreCase);
 
-        public string ActionLabel => "连接";
+        public string ActionLabel => IsCurrent ? "已连接" : "连接";
+
+        public bool CanConnect => !IsCurrent;
     }
 }

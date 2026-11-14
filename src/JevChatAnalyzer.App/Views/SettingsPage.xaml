@@ -102,6 +102,7 @@
                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                         </StackPanel>
                                         <Button Grid.Column="2" Content="{Binding ActionLabel}"
+                                                IsEnabled="{Binding CanConnect}"
                                                 Click="AccountConnect_Click"
                                                 VerticalAlignment="Center" Height="32" MinWidth="64" Padding="12,0"
                                                 FontSize="12" />
@@ -216,10 +217,9 @@
                     <TextBlock FontSize="20" FontWeight="SemiBold">隐私与写回</TextBlock>
                     <ToggleSwitch x:Name="WriteBackSwitch" OnContent="自动写回：判读对方消息后入队并实时落库" OffContent="自动写回：关（仅分析，不写库）" />
                     <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Text="写回把判读结论写进对方那条消息的引用块（不改正文、不新增气泡）。判读后先记账再实时落库；改写前的原文快照留在判读台账里，支持按条撤销与逐条还原到本应用修改之前（不复制整库）。" />
+                               Text="写回把判读结论写进对方文本消息的引用块（不改正文）；若对方那条本身是引用回复，则新增一条引用该消息的气泡，原行保持不动。判读后先记账再落库；改写前的快照留在台账里，支持按条撤销与还原到本应用修改之前（不复制整库）。" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Padding="12,0" Click="RestoreAll_Click" Height="32">还原到修改前</Button>
-                        <Button Padding="12,0" x:Name="ListWriteBacksButton" Click="ListWriteBacks_Click" Height="32">查看写回台账</Button>
                     </StackPanel>
                     <TextBlock x:Name="WriteBackListText" TextWrapping="Wrap" FontSize="12"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -234,7 +234,7 @@
                     <TextBlock
                         Text="组件：rwk.dll（密钥只读提取）· sqlcipher.dll（微信同源 SQLCipher 3.27.2）· silk_decoder.dll（Silk 解码）· sherpa-onnx（SenseVoice 转写）· NLaya/TorchSharp（本地 laya 判读）"
                         TextWrapping="Wrap" />
-                    <TextBlock Text="原始微信数据一律只读；所有写操作均在本应用数据目录内，写回功能除外（显式确认 + 自动备份）。" TextWrapping="Wrap" />
+                    <TextBlock Text="原始微信数据一律只读；写回只在微信退出时进行，需显式确认，改动前的原文快照记入判读台账，可随时撤销。" TextWrapping="Wrap" />
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" Spacing="8">

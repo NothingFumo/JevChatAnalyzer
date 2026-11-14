@@ -4,6 +4,7 @@ using JevChatAnalyzer.Core.Draft;
 using JevChatAnalyzer.Core.Judge.Laya;
 using JevChatAnalyzer.Core.Keys;
 using JevChatAnalyzer.Core.Ledger;
+using JevChatAnalyzer.Core.Messages;
 using JevChatAnalyzer.Core.Voice;
 using JevChatAnalyzer.Core.WriteBack;
 
@@ -21,6 +22,12 @@ public sealed class AppState
     private AppState()
     {
         Settings = SettingsStore.Load();
+        // 「监听开着但一个会话都没勾」等于空转：首次启动归一听全部活跃会话。
+        if (Settings.MonitorEnabled && !Settings.MonitorAll
+            && SessionWhitelist.Parse(Settings.MonitorSessions).Count == 0)
+        {
+            Settings.MonitorAll = true;
+        }
         Pipeline = new AnalysisPipeline(
             new ConnectedChatReader(this),
             new ConnectedVoiceTranscriber(this),

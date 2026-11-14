@@ -33,8 +33,6 @@
             <TextBlock x:Name="SelfHint" Grid.Column="2" VerticalAlignment="Center" FontSize="12" Margin="8,0,0,0"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8">
-                <Button Height="32" Padding="12,0" x:Name="ReconnectButton" Click="Reconnect_Click" Content="重新连接"
-                        Visibility="Collapsed" />
                 <Button Height="32" Padding="12,0" x:Name="RefreshButton" Click="Refresh_Click" IsEnabled="False">刷新会话</Button>
                 <Button Height="32" Padding="12,0" x:Name="PendingButton" Click="Pending_Click">待写队列</Button>
                 <ProgressRing x:Name="BusyRing" Width="24" Height="24" IsActive="False" />
@@ -45,13 +43,15 @@
         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
             <Button Padding="12,0" x:Name="AnalyzeButton" Click="Analyze_Click" IsEnabled="False" Height="32"
                     Style="{StaticResource AccentButtonStyle}"
-                    ToolTipService.ToolTip="判读对方最新一条消息，结果以对话框呈现">
-                分析对方最新消息
+                    ToolTipService.ToolTip="判读当前选中会话里对方最新一条消息，结果以对话框呈现">
+                分析当前会话
             </Button>
-            <Button Padding="12,0" x:Name="DraftButton" Click="Draft_Click" IsEnabled="False" Height="32">起草回复</Button>
-            <Button Padding="12,0" x:Name="RevokeButton" Click="Revoke_Click" IsEnabled="False" Height="32">撤销写回</Button>
+            <Button Padding="12,0" x:Name="DraftButton" Click="Draft_Click" IsEnabled="False" Height="32"
+                    ToolTipService.ToolTip="基于最近一次判读生成 3 条候选回复（需在「设置 → 起草回复」启用并配置接口）">起草回复</Button>
+            <Button Padding="12,0" x:Name="RevokeButton" Click="Revoke_Click" IsEnabled="False" Height="32"
+                    ToolTipService.ToolTip="撤销最近一条已写回的判读，恢复对方消息原样">撤销写回</Button>
             <Button Padding="12,0" x:Name="ReapplyButton" Click="Reapply_Click" IsEnabled="False" Height="32"
-                    ToolTipService.ToolTip="用台账里保留的判读结论，再次原样写回同一条消息">
+                    ToolTipService.ToolTip="把最近一次撤销的判读结论再次原样写回同一条消息">
                 再次写回
             </Button>
         </StackPanel>

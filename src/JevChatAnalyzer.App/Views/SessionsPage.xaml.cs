@@ -124,7 +124,6 @@ public sealed partial class SessionsPage : Page
             }
 
             SelfHint.Text = "已连接";
-            ReconnectButton.Visibility = Visibility.Collapsed;
         }
         else
         {
@@ -133,7 +132,6 @@ public sealed partial class SessionsPage : Page
             SelfImage.Visibility = Visibility.Collapsed;
             SelfInitial.Visibility = Visibility.Visible;
             SelfHint.Text = "未连接微信数据";
-            ReconnectButton.Visibility = Visibility.Visible;
         }
     }
 
@@ -442,8 +440,16 @@ public sealed partial class SessionsPage : Page
         if (_suppressSettingsWrite) return;
         var state = AppState.Instance;
         state.Settings.MonitorEnabled = MonitorSwitch.IsOn;
+        // 首次开启时若没有白名单，默认监听全部活跃会话；否则开关打开却一个都不听，等于空转。
+        if (MonitorSwitch.IsOn && !state.Settings.MonitorAll
+            && SessionWhitelist.Parse(state.Settings.MonitorSessions).Count == 0)
+        {
+            state.Settings.MonitorAll = true;
+        }
+
         state.SaveSettings();
         state.RestartMonitor();
+        RefreshSessions();
         SetStatus(MonitorSwitch.IsOn ? "实时监听已开启。" : "实时监听已关闭。",
             MonitorSwitch.IsOn ? InfoBarSeverity.Success : InfoBarSeverity.Informational);
     }
@@ -824,14 +830,14 @@ public sealed partial class SessionsPage : Page
         public string Subtitle =>
             $"{KindLabel} · {Session.MessageCount} 条 · 最近 {Session.LastTime:MM-dd HH:mm}";
 
-        public string ToggleLabel => Monitored ? "已开启" : "未开启";
+        public string ToggleLabel => Monitored ? "监听中" : "监听";
 
         public Brush ToggleForeground => Monitored
             ? (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"]
             : (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
 
         public Brush ToggleBorderBrush => Monitored
-            ? (Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"]
+            ? (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"]
             : (Brush)Application.Current.Resources["ControlStrokeColorDefaultBrush"];
 
         public event PropertyChangedEventHandler? PropertyChanged;
