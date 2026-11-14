@@ -27,6 +27,7 @@
                 <ComboBoxItem Content="已写回" />
                 <ComboBoxItem Content="已撤销" />
                 <ComboBoxItem Content="待写回" />
+                <ComboBoxItem Content="无法写回" />
             </ComboBox>
             <Button Padding="12,0" Grid.Column="2" Click="Refresh_Click" Height="32">刷新</Button>
             <TextBlock Grid.Column="3" x:Name="CountText" VerticalAlignment="Center" FontSize="12"

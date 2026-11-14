@@ -5,6 +5,7 @@ using JevChatAnalyzer.Core.Judge.Laya;
 using JevChatAnalyzer.Core.Ledger;
 using JevChatAnalyzer.Core.Messages;
 using JevChatAnalyzer.Core.Voice;
+using JevChatAnalyzer.Core.WriteBack;
 
 namespace JevChatAnalyzer.App.Services;
 
@@ -63,6 +64,7 @@ internal sealed class LedgerAnalysisSink(AppState state) : IAnalysisSink
     {
         state.Ledger.AddJudgment(judgment);
         if (!enqueue || !state.Settings.AutoWriteEnabled || judgment.Verdict.IsBlindDraft) return false;
+        if (!WriteBackRules.CanAnnotate(focus)) return false; // 语音/图片等无法加引用块，只判读不写回
         if (state.WriteBack is not { } writeBack) return false;
         writeBack.EnqueuePending(judgment.WxId, judgment.SessionId, focus, judgment.Verdict.Summary, judgment.Id);
         return true;

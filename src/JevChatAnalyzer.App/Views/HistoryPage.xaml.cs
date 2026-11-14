@@ -40,6 +40,7 @@ public sealed partial class HistoryPage : Page
             1 => (WriteState?)WriteState.Committed,
             2 => WriteState.Revoked,
             3 => WriteState.Pending,
+            4 => WriteState.Rejected,
             _ => null
         };
 
@@ -172,7 +173,8 @@ public sealed partial class HistoryPage : Page
         {
             WriteState.Committed => (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"],
             WriteState.Pending => (Brush)Application.Current.Resources["SystemFillColorCautionBrush"],
-            WriteState.Orphaned => (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"],
+            WriteState.Orphaned or WriteState.Rejected =>
+                (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"],
             _ => (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
         };
 
@@ -180,7 +182,8 @@ public sealed partial class HistoryPage : Page
         {
             WriteState.Committed => (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"],
             WriteState.Pending => (Brush)Application.Current.Resources["SystemFillColorCautionBrush"],
-            WriteState.Orphaned => (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"],
+            WriteState.Orphaned or WriteState.Rejected =>
+                (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"],
             _ => (Brush)Application.Current.Resources["ControlStrokeColorDefaultBrush"]
         };
 

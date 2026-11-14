@@ -113,6 +113,20 @@ public class LedgerStoreTests : IDisposable
     }
 
     [Fact]
+    public void WriteBack_确定性拒绝标记后移出待写队列()
+    {
+        using var ledger = new LedgerStore(_dir);
+        var entry = ledger.BeginWriteBack(Intent());
+        Assert.Equal(1, ledger.PendingCount());
+
+        ledger.MarkRejected(entry.Id, "只能给对方的文本消息或引用回复加引用块。");
+
+        Assert.Equal(0, ledger.PendingCount());
+        var rejected = Assert.Single(ledger.ListByState(WriteState.Rejected));
+        Assert.Equal("只能给对方的文本消息或引用回复加引用块。", rejected.LastError);
+    }
+
+    [Fact]
     public void WriteBack_从pending到committed_同一行只保留一条生效()
     {
         using var ledger = new LedgerStore(_dir);

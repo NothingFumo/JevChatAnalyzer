@@ -14,6 +14,7 @@ public static class WriteStateLabel
             WriteState.Revoked => "已撤销",
             WriteState.Pending => "待写回",
             WriteState.Orphaned => "待确认",
+            WriteState.Rejected => "无法写回",
             _ => "未写回"
         };
     }
@@ -26,6 +27,7 @@ public static class WriteStateLabel
             WriteState.Committed => "生效中",
             WriteState.Revoked => revokedAt is { } at ? $"已撤销 {at:MM-dd HH:mm}" : "已撤销",
             WriteState.Pending => "待写回",
+            WriteState.Rejected => "无法写回",
             _ => "状态待确认"
         };
     }

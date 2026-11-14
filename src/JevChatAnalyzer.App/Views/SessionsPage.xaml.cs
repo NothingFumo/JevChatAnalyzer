@@ -77,7 +77,7 @@ public sealed partial class SessionsPage : Page
             }
 
             if (failed.Count > 0)
-                SetStatus($"自动写回有 {failed.Count} 条失败（保留在队列中）：\n" +
+                SetStatus($"自动写回有 {failed.Count} 条失败：\n" +
                           string.Join("\n", failed.Select(r => r.Error)), InfoBarSeverity.Warning);
         });
         state.Flow.StatusChanged += st => DispatcherQueue.TryEnqueue(() =>
@@ -506,8 +506,11 @@ public sealed partial class SessionsPage : Page
             }
 
             SetStatus(outcome.Enqueued
-                ? "判读完成——已写进对方那条消息的引用块（若会话里暂未显示，切换/重开会话即可；写入失败会自动排队重试）。"
-                : "判读完成（自动写回已在设置中关闭）。", InfoBarSeverity.Success);
+                    ? "判读完成——已写进对方那条消息的引用块（若会话里暂未显示，切换/重开会话即可；写入失败会自动排队重试）。"
+                    : state.Settings.AutoWriteEnabled
+                        ? "判读完成——该消息不是文本或引用回复，未写回。"
+                        : "判读完成（自动写回已在设置中关闭）。",
+                InfoBarSeverity.Success);
             await ShowVerdictAsync(outcome);
         }
         catch (Exception ex)

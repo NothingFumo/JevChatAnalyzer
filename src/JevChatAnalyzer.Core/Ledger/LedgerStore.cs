@@ -14,7 +14,8 @@ public enum WriteState
     Pending,
     Committed,
     Revoked,
-    Orphaned
+    Orphaned,
+    Rejected
 }
 
 /// <summary>一条判读记录（历史上的 HistoryRecord）。</summary>
@@ -539,6 +540,19 @@ public sealed class LedgerStore : IDisposable
         lock (_gate)
         {
             Db.Execute($"UPDATE writeback SET inserted_local_id = {insertedLocalId} WHERE id = '{Esc(id)}'");
+        }
+    }
+
+    /// <summary>确定性失败（目标不是文本/引用回复、快照缺失等）：标记后不再重试。</summary>
+    internal void MarkRejected(string id, string reason)
+    {
+        lock (_gate)
+        {
+            Db.Execute($"""
+                        UPDATE writeback
+                        SET state = 'rejected', last_error = '{Esc(reason)}'
+                        WHERE id = '{Esc(id)}' AND state = 'pending'
+                        """);
         }
     }
 

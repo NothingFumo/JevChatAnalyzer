@@ -20,6 +20,7 @@ public sealed partial class SettingsPage : Page
 {
     private CancellationTokenSource? _layaDownloadCts;
     private CancellationTokenSource? _voiceDownloadCts;
+    private bool _loadingSettings;
 
     public SettingsPage()
     {
@@ -49,6 +50,19 @@ public sealed partial class SettingsPage : Page
     }
 
     private void LoadSettings()
+    {
+        _loadingSettings = true;
+        try
+        {
+            LoadSettingsCore();
+        }
+        finally
+        {
+            _loadingSettings = false;
+        }
+    }
+
+    private void LoadSettingsCore()
     {
         var s = AppState.Instance.Settings;
         VoiceSwitch.IsOn = s.VoiceEnabled;
@@ -491,13 +505,20 @@ public sealed partial class SettingsPage : Page
 
     // —— 保存 ——
 
-    private void Save_Click(object sender, RoutedEventArgs e)
+    /// <summary>设置即时生效：开关改完即存，文本框在失焦时存。</summary>
+    private void Setting_Changed(object sender, RoutedEventArgs e)
     {
-        var s = AppState.Instance.Settings;
+        if (_loadingSettings) return;
+        PersistSettings();
+    }
+
+    private void PersistSettings()
+    {
+        var state = AppState.Instance;
+        var s = state.Settings;
+        var autoWriteChanged = s.AutoWriteEnabled != WriteBackSwitch.IsOn;
         s.VoiceEnabled = VoiceSwitch.IsOn;
         s.VoiceModelDir = VoiceModelDirBox.Text.Trim();
-        // 监听配置热生效：重启监听（已打开数据时）
-        if (s.MonitorEnabled && AppState.Instance.Account is not null) AppState.Instance.StartMonitor();
         s.AutoWriteEnabled = WriteBackSwitch.IsOn;
         s.DraftEnabled = DraftSwitch.IsOn;
         s.DraftEndpoint = string.IsNullOrWhiteSpace(DraftEndpointBox.Text)
@@ -505,8 +526,10 @@ public sealed partial class SettingsPage : Page
             : DraftEndpointBox.Text.Trim();
         s.DraftModel = string.IsNullOrWhiteSpace(DraftModelBox.Text) ? "deepseek-chat" : DraftModelBox.Text.Trim();
         s.DraftApiKeyEnv = string.IsNullOrWhiteSpace(DraftApiKeyEnvBox.Text) ? "LLM_API_KEY" : DraftApiKeyEnvBox.Text.Trim();
-        AppState.Instance.SaveSettings();
-        SaveHint.Text = "已保存 " + DateTimeOffset.Now.ToString("HH:mm:ss");
+        state.SaveSettings();
+
+        // 写回开关影响监听循环的落库分支，改完立即重启监听使其生效。
+        if (autoWriteChanged && state.Account is not null) state.RestartMonitor();
     }
 
     private void DraftApiKeyEnvBox_TextChanged(object sender, TextChangedEventArgs e) => UpdateDraftKeyHint();

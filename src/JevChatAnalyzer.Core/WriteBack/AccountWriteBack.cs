@@ -92,9 +92,16 @@ public sealed class AccountWriteBack
             {
                 results.Add((Commit(pending), null));
             }
+            catch (WriteBackRejected e)
+            {
+                // 目标类型不合法、快照缺失等确定性错误：重试不会成功，标记后移出待写队列。
+                Ledger.MarkRejected(pending.Id, e.Message);
+                results.Add((null,
+                    $"{pending.SessionId}#{pending.AnnotatedLocalId}: {e.Message}（已标记为无法写回，不再重试）"));
+            }
             catch (Exception e)
             {
-                // 自动落库在后台执行，任何失败都转为结果项而不是中断整批
+                // 瞬时失败（微信占用、文件锁等）保留在队列中，下一轮重试
                 results.Add((null, $"{pending.SessionId}#{pending.AnnotatedLocalId}: {e.Message}"));
             }
 

@@ -173,12 +173,13 @@
                 <!--  语音转写  -->
                 <StackPanel x:Name="PaneVoice" Spacing="12" Visibility="Collapsed">
                     <TextBlock FontSize="20" FontWeight="SemiBold">语音转写</TextBlock>
-                    <ToggleSwitch x:Name="VoiceSwitch" OnContent="启用语音消息转写" OffContent="语音转写：关" />
+                    <ToggleSwitch x:Name="VoiceSwitch" OnContent="启用语音消息转写" OffContent="语音转写：关"
+                                  Toggled="Setting_Changed" />
                     <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Text="SenseVoiceSmall int8（约 245MB，modelscope 下载）+ 微信同源 Silk 解码，全程本地推理。" />
                     <StackPanel Spacing="4">
                         <TextBlock>模型目录（空 = 文档\JevChatAnalyzer\models\sensevoice，修改需重启）</TextBlock>
-                        <TextBox x:Name="VoiceModelDirBox" />
+                        <TextBox x:Name="VoiceModelDirBox" LostFocus="Setting_Changed" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Padding="12,0" x:Name="DownloadVoiceButton" Height="32" Click="DownloadVoice_Click">下载语音模型</Button>
@@ -192,22 +193,26 @@
                 <!--  起草回复  -->
                 <StackPanel x:Name="PaneDraft" Spacing="12" Visibility="Collapsed">
                     <TextBlock FontSize="20" FontWeight="SemiBold">起草回复</TextBlock>
-                    <ToggleSwitch x:Name="DraftSwitch" OnContent="启用起草回复（判读完成后可用）" OffContent="起草回复：关" />
+                    <ToggleSwitch x:Name="DraftSwitch" OnContent="启用起草回复（判读完成后可用）" OffContent="起草回复：关"
+                                  Toggled="Setting_Changed" />
                     <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Text="调用兼容 OpenAI Chat Completions 的接口生成 3 条候选回复，再由本地 laya 判读选出最合适的一条置顶。会话上下文与判读结论会发送到所填接口，请自行确认服务方。" />
                     <StackPanel Spacing="4">
                         <TextBox x:Name="DraftEndpointBox" Header="接口地址"
-                                 PlaceholderText="https://api.deepseek.com/chat/completions" />
+                                 PlaceholderText="https://api.deepseek.com/chat/completions"
+                                 LostFocus="Setting_Changed" />
                         <TextBlock FontSize="11" TextWrapping="Wrap"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    Text="须为完整的 chat/completions 端点；请求体按 OpenAI 格式构造。" />
                     </StackPanel>
                     <StackPanel Spacing="4">
-                        <TextBox x:Name="DraftModelBox" Header="模型名" PlaceholderText="deepseek-chat" />
+                        <TextBox x:Name="DraftModelBox" Header="模型名" PlaceholderText="deepseek-chat"
+                                 LostFocus="Setting_Changed" />
                     </StackPanel>
                     <StackPanel Spacing="4">
                         <TextBox x:Name="DraftApiKeyEnvBox" Header="API key 所在的环境变量名"
-                                 PlaceholderText="LLM_API_KEY" TextChanged="DraftApiKeyEnvBox_TextChanged" />
+                                 PlaceholderText="LLM_API_KEY" TextChanged="DraftApiKeyEnvBox_TextChanged"
+                                 LostFocus="Setting_Changed" />
                         <TextBlock x:Name="DraftKeyHint" FontSize="12" TextWrapping="Wrap"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
@@ -216,7 +221,8 @@
                 <!--  隐私与写回  -->
                 <StackPanel x:Name="PanePrivacy" Spacing="12" Visibility="Collapsed">
                     <TextBlock FontSize="20" FontWeight="SemiBold">隐私与写回</TextBlock>
-                    <ToggleSwitch x:Name="WriteBackSwitch" OnContent="自动写回：判读对方消息后入队并实时落库" OffContent="自动写回：关（仅分析，不写库）" />
+                    <ToggleSwitch x:Name="WriteBackSwitch" OnContent="自动写回：判读对方消息后入队并实时落库" OffContent="自动写回：关（仅分析，不写库）"
+                                  Toggled="Setting_Changed" />
                     <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Text="写回把判读结论写进对方文本消息的引用块（不改正文）；若对方那条本身是引用回复，则新增一条引用该消息的气泡，原行保持不动。判读后先记账再落库；改写前的快照留在台账里，支持按条撤销与还原到本应用修改之前（不复制整库）。" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -238,14 +244,6 @@
                     <TextBlock Text="原始微信数据一律只读；写回只在微信退出时进行，需显式确认，改动前的原文快照记入判读台账，可随时撤销。" TextWrapping="Wrap" />
                 </StackPanel>
 
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button Padding="12,0" x:Name="SaveSettingsButton" Click="Save_Click" Height="32"
-                            Style="{StaticResource AccentButtonStyle}">
-                        保存设置
-                    </Button>
-                    <TextBlock x:Name="SaveHint" VerticalAlignment="Center"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </Grid>
