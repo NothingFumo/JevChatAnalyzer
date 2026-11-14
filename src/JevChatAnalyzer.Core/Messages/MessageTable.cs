@@ -8,6 +8,15 @@ namespace JevChatAnalyzer.Core.Messages;
 /// </summary>
 public static class MessageTable
 {
+    /// <summary>
+    ///     判读引用块用的伪会话：写回把判读行写进 <c>Msg_&lt;hash&gt;</c>，供微信渲染引用块。
+    ///     它不是真实聊天，枚举会话列表时必须排除。
+    /// </summary>
+    public const string JudgmentSessionId = "jca_judgment_quote@chatroom";
+
+    /// <summary>判读伪表的表名。</summary>
+    public static string JudgmentTable => For(JudgmentSessionId);
+
     /// <summary>会话 id 的 MD5 十六进制（微信表名后缀）。</summary>
     public static string Hash(string sessionId)
     {

@@ -124,6 +124,8 @@ public sealed class ChatStore : IDisposable
                      "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'Msg\\_%' ESCAPE '\\'"))
         {
             var table = row.Text("name")!;
+            if (string.Equals(table, MessageTable.JudgmentTable, StringComparison.Ordinal))
+                continue; // 判读伪表：不是真实会话，不进入列表与统计
             var md5 = table["Msg_".Length..];
             // 表名 md5 反查会话名：对照已知会话名做匹配（ListSessions 时补全）
             _sessionTableNames.TryAdd(table, table);
@@ -478,7 +480,10 @@ public sealed class ChatStore : IDisposable
 
     private string ResolveDisplayName(string id)
     {
-        return _displayNames.GetValueOrDefault(id) ?? id;
+        if (_displayNames.TryGetValue(id, out var name) && !string.IsNullOrWhiteSpace(name)) return name;
+        // 界面不展示 wxid / md5 等数据库标识：解析不到名字时给人类可读的回退
+        if (id.StartsWith("md5:", StringComparison.Ordinal)) return "未命名会话";
+        return id;
     }
 
     private static string? FirstNonEmpty(params string?[] values)

@@ -44,7 +44,7 @@ public sealed class AccountWriteBack
     ///     判读行放在这个「伪会话」对应的表里：它不对应任何真实会话，微信永远不会打开它，
     ///     因此不会渲染出气泡；而引用块按 fromusr + svrid 仍能解析到判读文本。
     /// </summary>
-    public const string JudgmentSessionId = "jca_judgment_quote@chatroom";
+    public const string JudgmentSessionId = MessageTable.JudgmentSessionId;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
