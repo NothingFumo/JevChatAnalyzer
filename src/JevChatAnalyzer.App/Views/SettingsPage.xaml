@@ -189,6 +189,9 @@
                     <StackPanel Spacing="4">
                         <TextBlock>模型目录（空 = 文档\JevChatAnalyzer\models\sensevoice，修改需重启）</TextBlock>
                         <TextBox x:Name="VoiceModelDirBox" LostFocus="Setting_Changed" />
+                        <TextBlock x:Name="VoiceDirHint" FontSize="11" TextWrapping="Wrap" Visibility="Collapsed"
+                                   Text="目录已保存，重启应用后生效。"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Padding="12,0" x:Name="DownloadVoiceButton" Height="32" Click="DownloadVoice_Click">下载语音模型</Button>
@@ -251,6 +254,10 @@
                         Text="组件：rwk.dll（密钥只读提取）· sqlcipher.dll（微信同源 SQLCipher 3.27.2）· silk_decoder.dll（Silk 解码）· sherpa-onnx（SenseVoice 转写）· NLaya/TorchSharp（本地 laya 判读）"
                         TextWrapping="Wrap" />
                     <TextBlock Text="原始微信数据一律只读；写回只在微信退出时进行，需显式确认，改动前的原文快照记入判读台账，可随时撤销。" TextWrapping="Wrap" />
+                    <TextBlock x:Name="VersionText" FontSize="12"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Name="PathsText" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
 
             </StackPanel>

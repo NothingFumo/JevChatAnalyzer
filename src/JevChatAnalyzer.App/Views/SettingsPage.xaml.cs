@@ -79,6 +79,12 @@ public sealed partial class SettingsPage : Page
         ShowModelStatus();
         var transcriber = AppState.Instance.Transcriber;
         AutoSaveHint.Text = "设置更改后会自动保存";
+        VoiceDirHint.Visibility = Visibility.Collapsed;
+        var version = typeof(JevChatAnalyzer.App.App).Assembly.GetName().Version;
+        VersionText.Text = $"版本 {version?.ToString(3) ?? "未知"}";
+        PathsText.Text = "数据目录：" + Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JevChatAnalyzer") +
+            "（判读台账、模型与日志）";
         VoiceModelStatus.Text = transcriber.IsModelReady
             ? $"模型已就绪：{transcriber.ModelFiles.ModelPath}（{FormatSize(new FileInfo(transcriber.ModelFiles.ModelPath).Length)}）"
             : "模型未下载。";
@@ -511,6 +517,7 @@ public sealed partial class SettingsPage : Page
     {
         if (_loadingSettings) return;
         PersistSettings();
+        if (ReferenceEquals(sender, VoiceModelDirBox)) VoiceDirHint.Visibility = Visibility.Visible;
     }
 
     private void PersistSettings()
@@ -518,6 +525,9 @@ public sealed partial class SettingsPage : Page
         var state = AppState.Instance;
         var s = state.Settings;
         var autoWriteChanged = s.AutoWriteEnabled != WriteBackSwitch.IsOn;
+        var corrected = string.IsNullOrWhiteSpace(DraftEndpointBox.Text)
+                        || string.IsNullOrWhiteSpace(DraftModelBox.Text)
+                        || string.IsNullOrWhiteSpace(DraftApiKeyEnvBox.Text);
         s.VoiceEnabled = VoiceSwitch.IsOn;
         s.VoiceModelDir = VoiceModelDirBox.Text.Trim();
         s.AutoWriteEnabled = WriteBackSwitch.IsOn;
@@ -528,7 +538,9 @@ public sealed partial class SettingsPage : Page
         s.DraftModel = string.IsNullOrWhiteSpace(DraftModelBox.Text) ? "deepseek-chat" : DraftModelBox.Text.Trim();
         s.DraftApiKeyEnv = string.IsNullOrWhiteSpace(DraftApiKeyEnvBox.Text) ? "LLM_API_KEY" : DraftApiKeyEnvBox.Text.Trim();
         state.SaveSettings();
-        AutoSaveHint.Text = $"已自动保存 {DateTimeOffset.Now:HH:mm:ss}";
+        AutoSaveHint.Text = corrected
+            ? "已保存；空值已恢复为默认"
+            : $"已自动保存 {DateTimeOffset.Now:HH:mm:ss}";
 
         // 写回开关影响监听循环的落库分支，改完立即重启监听使其生效。
         if (autoWriteChanged && state.Account is not null) state.RestartMonitor();
