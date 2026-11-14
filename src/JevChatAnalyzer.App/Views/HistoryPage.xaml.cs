@@ -105,7 +105,7 @@ public sealed partial class HistoryPage : Page
             Title = $"「{record.SessionTitle}」的判读明细",
             Content = new ScrollViewer { MaxHeight = 420, Content = panel },
             CloseButtonText = "关闭"
-        }.ShowAsync();
+        }.ShowSerializedAsync();
     }
 
     private async void Delete_Click(object sender, RoutedEventArgs e)
@@ -120,7 +120,7 @@ public sealed partial class HistoryPage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close
         };
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await confirm.ShowSerializedAsync() != ContentDialogResult.Primary) return;
         try
         {
             AppState.Instance.Ledger.DeleteJudgment(row.Record.Id);
@@ -134,7 +134,7 @@ public sealed partial class HistoryPage : Page
                 Title = "无法删除",
                 Content = ex.Message,
                 CloseButtonText = "知道了"
-            }.ShowAsync();
+            }.ShowSerializedAsync();
         }
     }
 

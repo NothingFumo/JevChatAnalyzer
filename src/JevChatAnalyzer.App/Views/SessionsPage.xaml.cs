@@ -23,6 +23,7 @@ public sealed partial class SessionsPage : Page
     private readonly bool _suppressSettingsWrite;
     private ChatSession? _currentSession;
     private AnalysisOutcome? _lastOutcome;
+    private bool _analysisRunning;
 
     // ── 会话列表 + 监听开关 ─────────────────────────────────────────
 
@@ -206,7 +207,7 @@ public sealed partial class SessionsPage : Page
             Title = "判读结果",
             Content = new ScrollViewer { MaxHeight = 420, Content = panel },
             CloseButtonText = "关闭"
-        }.ShowAsync();
+        }.ShowSerializedAsync();
     }
 
     /// <summary>页面已开启导航缓存（订阅只注册一次），每次进入时刷新会话与状态。</summary>
@@ -404,7 +405,7 @@ public sealed partial class SessionsPage : Page
                 Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, FontSize = 13 }
             },
             CloseButtonText = "关闭"
-        }.ShowAsync();
+        }.ShowSerializedAsync();
     }
 
     private static string StateLabel(WriteBackEntry? entry)
@@ -481,8 +482,10 @@ public sealed partial class SessionsPage : Page
 
     private async Task AnalyzeCurrentAsync()
     {
+        if (_analysisRunning) return; // 连点行内分析/主按钮时不并发判读，避免并发对话框
         var state = AppState.Instance;
         if (_currentSession is null || state.Account is null) return;
+        _analysisRunning = true;
         SetBusy(true);
         SetStatus($"正在分析 [{_currentSession.DisplayName}] …");
         try
@@ -513,6 +516,7 @@ public sealed partial class SessionsPage : Page
         }
         finally
         {
+            _analysisRunning = false;
             SetBusy(false);
         }
     }
@@ -584,7 +588,7 @@ public sealed partial class SessionsPage : Page
                 DefaultButton = ContentDialogButton.Primary,
                 Content = list
             };
-            var picked = await dialog.ShowAsync();
+            var picked = await dialog.ShowSerializedAsync();
             if (list.SelectedItem is not DraftRow row) return;
             if (picked == ContentDialogResult.Primary)
             {
@@ -699,7 +703,7 @@ public sealed partial class SessionsPage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close
         };
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await confirm.ShowSerializedAsync() != ContentDialogResult.Primary) return;
         SetBusy(true);
         try
         {
@@ -747,7 +751,7 @@ public sealed partial class SessionsPage : Page
             Content = new ScrollViewer
                 { MaxHeight = 320, Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap } },
             CloseButtonText = "关闭"
-        }.ShowAsync();
+        }.ShowSerializedAsync();
     }
 
     private void Status_Close(object sender, object e)

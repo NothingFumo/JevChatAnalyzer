@@ -43,8 +43,8 @@
         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
             <Button Padding="12,0" x:Name="AnalyzeButton" Click="Analyze_Click" IsEnabled="False" Height="32"
                     Style="{StaticResource AccentButtonStyle}"
-                    ToolTipService.ToolTip="判读当前选中会话里对方最新一条消息，结果以对话框呈现">
-                分析当前会话
+                    ToolTipService.ToolTip="判读选中会话里对方最新一条消息，结果以对话框呈现">
+                分析选中会话
             </Button>
             <Button Padding="12,0" x:Name="DraftButton" Click="Draft_Click" IsEnabled="False" Height="32"
                     ToolTipService.ToolTip="基于最近一次判读生成 3 条候选回复（需在「设置 → 起草回复」启用并配置接口）">起草回复</Button>

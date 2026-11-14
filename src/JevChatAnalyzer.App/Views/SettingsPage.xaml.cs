@@ -181,7 +181,7 @@ public sealed partial class SettingsPage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await dialog.ShowSerializedAsync() != ContentDialogResult.Primary) return;
 
         var newName = nameBox.Text.Trim();
         var newPath = string.IsNullOrWhiteSpace(pathBox.Text) ? null : pathBox.Text.Trim();
@@ -198,7 +198,7 @@ public sealed partial class SettingsPage : Page
                     Title = "dbKey 格式不对",
                     Content = "需要 64 位十六进制字符串（32 字节）。",
                     CloseButtonText = "知道了"
-                }.ShowAsync();
+                }.ShowSerializedAsync();
                 return;
             }
 
@@ -232,7 +232,7 @@ public sealed partial class SettingsPage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close
         };
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await confirm.ShowSerializedAsync() != ContentDialogResult.Primary) return;
         var state = AppState.Instance;
         state.KeyVault.Delete(row.WxId);
         if (string.Equals(row.WxId, state.Account?.WxId, StringComparison.Ordinal)) state.CloseWeChatData();
@@ -471,7 +471,7 @@ public sealed partial class SettingsPage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close
         };
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await confirm.ShowSerializedAsync() != ContentDialogResult.Primary) return;
         try
         {
             var results = writeBack.RestoreAll();
