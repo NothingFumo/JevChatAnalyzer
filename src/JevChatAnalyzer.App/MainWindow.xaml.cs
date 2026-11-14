@@ -15,6 +15,9 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        // 标题栏/任务栏图标：使用随程序分发的多尺寸 ico（打包与免安装一致）
+        var icon = Path.Combine(AppContext.BaseDirectory, "assets", "app.ico");
+        if (File.Exists(icon)) AppWindow.SetIcon(icon);
         FitToWorkArea();
         ContentFrame.Navigate(typeof(SessionsPage));
         Nav.SelectedItem = Nav.MenuItems[0];
