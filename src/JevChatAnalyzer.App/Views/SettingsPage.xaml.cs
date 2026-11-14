@@ -471,7 +471,7 @@ public sealed partial class SettingsPage : Page
         var state = AppState.Instance;
         if (state.WriteBack is not { } writeBack)
         {
-            WriteBackListText.Text = "请先在「对话与监听」页打开微信数据。";
+            WriteBackListText.Text = "请先在「会话与监听」页打开微信数据。";
             return;
         }
 

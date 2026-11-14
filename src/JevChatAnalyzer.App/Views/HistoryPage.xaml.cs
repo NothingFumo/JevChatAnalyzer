@@ -103,7 +103,7 @@ public sealed partial class HistoryPage : Page
 
         if (AppState.Instance.WriteBack is not { } writeBack)
         {
-            await ShowMessageAsync("无法撤销", "请先在「对话与监听」页打开微信数据。");
+            await ShowMessageAsync("无法撤销", "请先在「会话与监听」页打开微信数据。");
             return;
         }
 
@@ -125,7 +125,7 @@ public sealed partial class HistoryPage : Page
         if (sender is not Button { DataContext: HistoryRow row } || row.View.WriteBack is not { } entry) return;
         if (AppState.Instance.WriteBack is not { } writeBack)
         {
-            await ShowMessageAsync("无法写回", "请先在「对话与监听」页打开微信数据。");
+            await ShowMessageAsync("无法写回", "请先在「会话与监听」页打开微信数据。");
             return;
         }
 

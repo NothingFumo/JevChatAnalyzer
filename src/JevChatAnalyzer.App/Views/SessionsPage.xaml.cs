@@ -15,7 +15,7 @@ using Microsoft.UI.Xaml.Navigation;
 namespace JevChatAnalyzer.App.Views;
 
 /// <summary>
-///     对话与监听：会话列表（头像 / 监听开关 / 分析 / 记录）+ 判读结果卡片。
+///     会话与监听：会话列表（头像 / 监听开关 / 分析 / 记录）+ 判读结果卡片。
 ///     本页是常驻主页面；「会话判读」独立页已删除。不展示微信消息原文。
 /// </summary>
 public sealed partial class SessionsPage : Page
@@ -717,7 +717,7 @@ public sealed partial class SessionsPage : Page
         {
             if (state.WriteBack is not { } writeBack)
             {
-                SetStatus("请先在「对话与监听」页打开微信数据。", InfoBarSeverity.Warning);
+                SetStatus("请先在「会话与监听」页打开微信数据。", InfoBarSeverity.Warning);
                 return;
             }
 
@@ -799,7 +799,7 @@ public sealed partial class SessionsPage : Page
         {
             if (state.WriteBack is not { } writeBack)
             {
-                SetStatus("请先在「对话与监听」页打开微信数据。", InfoBarSeverity.Warning);
+                SetStatus("请先在「会话与监听」页打开微信数据。", InfoBarSeverity.Warning);
                 return;
             }
 

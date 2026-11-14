@@ -14,7 +14,7 @@
                         IsPaneToggleButtonVisible="True"
                         SelectionChanged="Nav_SelectionChanged">
             <NavigationView.MenuItems>
-                <NavigationViewItem Content="对话与监听" Tag="sessions" Icon="Comment" />
+                <NavigationViewItem Content="会话与监听" Tag="sessions" Icon="Comment" />
                 <NavigationViewItem Content="判读历史" Tag="history" Icon="Clock" />
             </NavigationView.MenuItems>
             <Frame x:Name="ContentFrame" />

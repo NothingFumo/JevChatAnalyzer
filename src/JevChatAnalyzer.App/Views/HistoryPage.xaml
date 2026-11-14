@@ -118,7 +118,7 @@
                 <StackPanel x:Name="EmptyPanel" Visibility="Collapsed" Spacing="6"
                             HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="380">
                     <TextBlock Text="还没有判读记录" FontWeight="SemiBold" HorizontalAlignment="Center" />
-                    <TextBlock Text="到「对话与监听」分析一条对方消息，这里会出现七题结论与写回状态。"
+                    <TextBlock Text="到「会话与监听」分析一条对方消息，这里会出现七题结论与写回状态。"
                                FontSize="12" TextWrapping="Wrap" TextAlignment="Center"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
