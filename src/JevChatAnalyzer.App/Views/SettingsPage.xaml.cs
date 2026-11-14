@@ -502,7 +502,7 @@ public sealed partial class SettingsPage : Page
                 ? $"已还原 {ok} 条写回，微信库回到本应用修改之前。"
                 : $"已还原 {ok} 条；{failed.Count} 条失败（台账保留，可稍后重试）：\n" +
                   string.Join("\n", failed.Select(f =>
-                      $"· {f.Entry.SessionId}#{f.Entry.AnnotatedLocalId}：{f.Error}"));
+                      $"· {AppState.Instance.SessionName(f.Entry.SessionId)}：{f.Error}"));
         }
         catch (Exception ex)
         {

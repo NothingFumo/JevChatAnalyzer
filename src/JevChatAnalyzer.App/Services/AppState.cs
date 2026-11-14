@@ -116,6 +116,19 @@ public sealed class AppState
         };
     }
 
+    /// <summary>界面展示用会话名：优先实时会话列表，其次台账里的历史标题；绝不回退到 wxid/会话 id。</summary>
+    public string SessionName(string sessionId, string? fallbackTitle = null)
+    {
+        if (!string.IsNullOrWhiteSpace(fallbackTitle)) return fallbackTitle!;
+        var live = Account?.Chat.ListSessions(1000)
+            .FirstOrDefault(s => string.Equals(s.SessionId, sessionId, StringComparison.Ordinal));
+        if (live is not null && !string.IsNullOrWhiteSpace(live.DisplayName)) return live.DisplayName;
+        var title = Ledger.Recent(1000)
+            .FirstOrDefault(v => string.Equals(v.Record.SessionId, sessionId, StringComparison.Ordinal))
+            ?.Record.SessionTitle;
+        return string.IsNullOrWhiteSpace(title) ? "（未命名会话）" : title;
+    }
+
     /// <summary>保存设置。判读 module 不随设置重建（模型目录固定，引擎单实例）。</summary>
     public void SaveSettings()
     {

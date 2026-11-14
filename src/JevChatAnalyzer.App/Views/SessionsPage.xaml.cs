@@ -72,14 +72,16 @@ public sealed partial class SessionsPage : Page
             if (ok.Count > 0)
             {
                 SetStatus($"自动写回完成：{ok.Count} 条引用消息已写入微信数据库" +
-                          $"（{string.Join("、", ok.Select(r => r.Entry!.SessionId))}）。" +
+                          $"（{string.Join("、", ok.Select(r => AppState.Instance.SessionName(r.Entry!.SessionId)).Distinct())}）。" +
                           "启动微信即可看到；可随时「撤销最近写回」。", InfoBarSeverity.Success);
                 RevokeButton.IsEnabled = true;
             }
 
             if (failed.Count > 0)
                 SetStatus($"自动写回有 {failed.Count} 条失败：\n" +
-                          string.Join("\n", failed.Select(r => r.Error)), InfoBarSeverity.Warning);
+                          string.Join("\n", failed.Select(r =>
+                              $"{AppState.Instance.SessionName(r.Entry!.SessionId)}：{r.Error}")),
+                    InfoBarSeverity.Warning);
         });
         state.Flow.StatusChanged += st => DispatcherQueue.TryEnqueue(() =>
         {
@@ -791,7 +793,7 @@ public sealed partial class SessionsPage : Page
             XamlRoot = XamlRoot,
             Title = "撤销写回",
             Content =
-                $"将把 {entry.WrittenAt:MM-dd HH:mm} 加上引用块的那条消息还原成原文（{entry.SessionId}），并删除对应判读行。微信库回到本应用修改之前的状态。是否继续？",
+                $"将把 {entry.WrittenAt:MM-dd HH:mm} 加上引用块的那条消息还原成原文（「{state.SessionName(entry.SessionId)}」），并删除对应判读行。微信库回到本应用修改之前的状态。是否继续？",
             PrimaryButtonText = "撤销",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close

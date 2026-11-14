@@ -193,32 +193,142 @@ public sealed partial class HistoryPage : Page
     private async void Delete_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { DataContext: HistoryRow row }) return;
+        var entry = row.View.WriteBack;
+        var committed = entry?.State == WriteState.Committed;
         var confirm = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "删除判读记录",
-            Content = $"将删除 {row.Record.CreatedAt:MM-dd HH:mm} 对「{row.Record.SessionTitle}」的判读记录及写回台账（不影响微信数据）。",
-            PrimaryButtonText = "删除",
+            Title = committed ? "撤销并删除判读记录" : "删除判读记录",
+            Content = $"将删除 {row.Record.CreatedAt:MM-dd HH:mm} 对「{row.Record.SessionTitle}」的判读记录" +
+                      (committed ? "，并先撤销写回、把消息还原成原文。" : "。") +
+                      "（不影响其他记录）",
+            PrimaryButtonText = committed ? "撤销并删除" : "删除",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close
         };
         if (await confirm.ShowSerializedAsync() != ContentDialogResult.Primary) return;
+
         try
         {
+            if (committed)
+            {
+                if (AppState.Instance.WriteBack is not { } writeBack)
+                {
+                    await ShowMessageAsync("无法删除", "已写回的记录需要连接微信数据后才能撤销，请先在「会话与监听」页打开微信数据。");
+                    return;
+                }
+
+                writeBack.Revoke(entry!);
+                if (entry!.AnnotatedLocalId is { } localId)
+                    AppState.Instance.Pipeline.Forget(entry.SessionId, localId);
+            }
+
             AppState.Instance.Ledger.DeleteJudgment(row.Record.Id);
             Load();
         }
         catch (Exception ex)
         {
-            _ = new ContentDialog
-            {
-                XamlRoot = XamlRoot,
-                Title = "无法删除",
-                Content = ex.Message,
-                CloseButtonText = "知道了"
-            }.ShowSerializedAsync();
+            await ShowMessageAsync("无法删除", ex.Message);
         }
     }
+
+    /// <summary>按会话批量彻底删除：已写回的条目先撤销，再删记录。</summary>
+    private async void DeleteBySession_Click(object sender, RoutedEventArgs e)
+    {
+        var groups = _rows
+            .GroupBy(r => r.Record.SessionId)
+            .Select(g => new SessionGroup(
+                g.Key,
+                AppState.Instance.SessionName(g.Key, g.First().Record.SessionTitle),
+                g.Count(),
+                g.Count(r => r.View.WriteBack?.State == WriteState.Committed)))
+            .OrderByDescending(g => g.Count)
+            .ToList();
+        if (groups.Count == 0)
+        {
+            await ShowMessageAsync("没有记录", "当前没有可删除的判读记录。");
+            return;
+        }
+
+        var combo = new ComboBox
+        {
+            ItemsSource = groups.Select(g => $"{g.Title}（{g.Count} 条，{g.Committed} 条已写回）").ToList(),
+            SelectedIndex = 0,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        var pick = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "按会话删除",
+            Content = combo,
+            PrimaryButtonText = "删除该会话记录",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close
+        };
+        if (await pick.ShowSerializedAsync() != ContentDialogResult.Primary) return;
+
+        var group = groups[Math.Max(0, combo.SelectedIndex)];
+        var records = _rows.Where(r => r.Record.SessionId == group.SessionId).ToList();
+        var confirm = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "彻底删除该会话的判读记录",
+            Content = $"将删除「{group.Title}」的 {records.Count} 条判读记录" +
+                      (group.Committed > 0
+                          ? $"；其中 {group.Committed} 条已写回会先撤销并把消息还原（移除引用块）。"
+                          : "。") +
+                      "此操作不可恢复。",
+            PrimaryButtonText = "彻底删除",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close
+        };
+        if (await confirm.ShowSerializedAsync() != ContentDialogResult.Primary) return;
+
+        var errors = new List<string>();
+        var revoked = 0;
+        var writeBack = AppState.Instance.WriteBack;
+        if (group.Committed > 0 && writeBack is null)
+        {
+            await ShowMessageAsync("无法删除", "已写回的记录需要连接微信数据后才能撤销，请先在「会话与监听」页打开微信数据。");
+            return;
+        }
+
+        if (writeBack is not null)
+            foreach (var entry in records.Select(r => r.View.WriteBack).OfType<WriteBackEntry>()
+                         .Where(w => w.State == WriteState.Committed))
+                try
+                {
+                    writeBack.Revoke(entry);
+                    revoked++;
+                    if (entry.AnnotatedLocalId is { } localId)
+                        AppState.Instance.Pipeline.Forget(entry.SessionId, localId);
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"{group.Title}：{ex.Message}");
+                }
+
+        var deleted = 0;
+        foreach (var record in records)
+            try
+            {
+                AppState.Instance.Ledger.DeleteJudgment(record.Record.Id);
+                deleted++;
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"{record.Record.SessionTitle}：{ex.Message}");
+            }
+
+        Load();
+        await ShowMessageAsync("删除完成",
+            $"已撤销 {revoked} 条写回，删除 {deleted} 条记录。" +
+            (errors.Count == 0
+                ? ""
+                : $"\n{errors.Distinct().Count()} 条未删除：\n" + string.Join("\n", errors.Distinct().Take(5))));
+    }
+
+    private sealed record SessionGroup(string SessionId, string Title, int Count, int Committed);
 
     private static string Truncate(string? s, int n)
     {

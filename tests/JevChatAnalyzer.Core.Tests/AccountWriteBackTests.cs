@@ -169,7 +169,7 @@ public class AccountWriteBackTests : IDisposable
         var results = service.FlushPending();
 
         var (entry, error) = Assert.Single(results);
-        Assert.Null(entry);
+        Assert.NotNull(entry); // 失败也带条目，界面据此显示会话名
         Assert.NotNull(error);
         Assert.Single(_ledger.ListByState(WriteState.Pending)); // 失败项保留在队列
     }
