@@ -36,6 +36,9 @@ public sealed class AppSettings
     public string DraftEndpoint { get; set; } = "https://api.deepseek.com/chat/completions";
 
     public string DraftModel { get; set; } = "deepseek-chat";
+
+    /// <summary>起草 API key 所在的环境变量名（密钥不写进 settings.json）。</summary>
+    public string DraftApiKeyEnv { get; set; } = "LLM_API_KEY";
 }
 
 /// <summary>设置持久化（%LOCALAPPDATA%\JevChatAnalyzer\settings.json）。</summary>

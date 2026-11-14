@@ -159,7 +159,7 @@ public sealed partial class SessionsPage : Page
 
         RefreshButton.IsEnabled = !busy && AppState.Instance.Account is not null;
         AnalyzeButton.IsEnabled = !busy && _currentSession is not null && AppState.Instance.Account is not null;
-        DraftButton.IsEnabled = !busy && _lastOutcome is not null && AppState.Instance.Settings.DraftEnabled;
+        DraftButton.IsEnabled = !busy && _lastOutcome is not null;
         RevokeButton.IsEnabled = !busy && AppState.Instance.Ledger.ListByState(WriteState.Committed).Count > 0;
         ReapplyButton.IsEnabled = !busy && AppState.Instance.Ledger.ListByState(WriteState.Revoked)
             .Any(en => en.QuoteText is not null && en.AnnotatedLocalId is not null);
@@ -515,13 +515,31 @@ public sealed partial class SessionsPage : Page
     {
         var state = AppState.Instance;
         if (_lastOutcome is null || _currentSession is null) return;
+
+        if (!state.Settings.DraftEnabled)
+        {
+            // 直接跳设置，页面上的开关与密钥提示本身就是说明，不必先弹一条看不到的 InfoBar。
+            Frame.Navigate(typeof(SettingsPage), "draft");
+            return;
+        }
+
+        var keyEnv = string.IsNullOrWhiteSpace(state.Settings.DraftApiKeyEnv)
+            ? "LLM_API_KEY"
+            : state.Settings.DraftApiKeyEnv;
+        var apiKey = Environment.GetEnvironmentVariable(keyEnv);
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            Frame.Navigate(typeof(SettingsPage), "draft");
+            return;
+        }
+
         SetBusy(true);
         try
         {
             var options = new DraftOptions
             {
                 Endpoint = new Uri(state.Settings.DraftEndpoint),
-                ApiKey = Environment.GetEnvironmentVariable("LLM_API_KEY"),
+                ApiKey = apiKey,
                 Model = state.Settings.DraftModel,
                 CandidateCount = 3
             };

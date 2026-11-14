@@ -33,6 +33,19 @@ public sealed partial class SettingsPage : Page
     {
         base.OnNavigatedTo(e);
         LoadSettings();
+        if (e.Parameter is string tag) SelectTab(tag);
+    }
+
+    private void SelectTab(string tag)
+    {
+        foreach (var obj in TabList.Items)
+        {
+            if (obj is ListViewItem item && item.Tag?.ToString() == tag)
+            {
+                item.IsSelected = true;
+                return;
+            }
+        }
     }
 
     private void LoadSettings()
@@ -41,6 +54,11 @@ public sealed partial class SettingsPage : Page
         VoiceSwitch.IsOn = s.VoiceEnabled;
         VoiceModelDirBox.Text = s.VoiceModelDir;
         WriteBackSwitch.IsOn = s.AutoWriteEnabled;
+        DraftSwitch.IsOn = s.DraftEnabled;
+        DraftEndpointBox.Text = s.DraftEndpoint;
+        DraftModelBox.Text = s.DraftModel;
+        DraftApiKeyEnvBox.Text = s.DraftApiKeyEnv;
+        UpdateDraftKeyHint();
         ElevateButton.Visibility = Elevation.IsElevated ? Visibility.Collapsed : Visibility.Visible;
 
         RefreshAccounts();
@@ -245,11 +263,12 @@ public sealed partial class SettingsPage : Page
     {
         // XAML 中首项 IsSelected="True" 会在解析期触发本事件，此时各分区元素尚未创建，
         // 必须判空（否则点开设置页直接闪退）
-        if (TabList is null || PaneKeys is null) return;
+        if (TabList is null || PaneKeys is null || PaneDraft is null) return;
         if (TabList.SelectedItem is not ListViewItem item) return;
         PaneKeys.Visibility = VisibleIf(item.Tag?.ToString() == "keys");
         PaneModels.Visibility = VisibleIf(item.Tag?.ToString() == "models");
         PaneVoice.Visibility = VisibleIf(item.Tag?.ToString() == "voice");
+        PaneDraft.Visibility = VisibleIf(item.Tag?.ToString() == "draft");
         PanePrivacy.Visibility = VisibleIf(item.Tag?.ToString() == "privacy");
         PaneAbout.Visibility = VisibleIf(item.Tag?.ToString() == "about");
     }
@@ -490,8 +509,36 @@ public sealed partial class SettingsPage : Page
         // 监听配置热生效：重启监听（已打开数据时）
         if (s.MonitorEnabled && AppState.Instance.Account is not null) AppState.Instance.StartMonitor();
         s.AutoWriteEnabled = WriteBackSwitch.IsOn;
+        s.DraftEnabled = DraftSwitch.IsOn;
+        s.DraftEndpoint = string.IsNullOrWhiteSpace(DraftEndpointBox.Text)
+            ? "https://api.deepseek.com/chat/completions"
+            : DraftEndpointBox.Text.Trim();
+        s.DraftModel = string.IsNullOrWhiteSpace(DraftModelBox.Text) ? "deepseek-chat" : DraftModelBox.Text.Trim();
+        s.DraftApiKeyEnv = string.IsNullOrWhiteSpace(DraftApiKeyEnvBox.Text) ? "LLM_API_KEY" : DraftApiKeyEnvBox.Text.Trim();
         AppState.Instance.SaveSettings();
         SaveHint.Text = "已保存 " + DateTimeOffset.Now.ToString("HH:mm:ss");
+    }
+
+    private void DraftApiKeyEnvBox_TextChanged(object sender, TextChangedEventArgs e) => UpdateDraftKeyHint();
+
+    /// <summary>只提示密钥是否存在；密钥本身不落盘，避免在设置文件里存明文。</summary>
+    private void UpdateDraftKeyHint()
+    {
+        if (DraftKeyHint is null) return;
+        var name = DraftApiKeyEnvBox.Text.Trim();
+        if (name.Length == 0)
+        {
+            DraftKeyHint.Text = "未填写环境变量名，起草会失败。";
+            DraftKeyHint.Foreground = (Brush)Application.Current.Resources["SystemFillColorCautionBrush"];
+            return;
+        }
+
+        var present = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable(name));
+        DraftKeyHint.Text = present
+            ? $"已检测到环境变量 {name}；密钥只从环境变量读取，不写入设置文件。"
+            : $"未检测到环境变量 {name}；先设置该环境变量，否则起草会失败。";
+        DraftKeyHint.Foreground = (Brush)Application.Current.Resources[
+            present ? "TextFillColorSecondaryBrush" : "SystemFillColorCautionBrush"];
     }
 
     /// <summary>账号行：头像 + 昵称（不显示 wxid）+ 数据目录 + 连接/目录/删除。</summary>

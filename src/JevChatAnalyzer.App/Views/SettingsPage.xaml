@@ -27,6 +27,11 @@
                     <FontIcon Glyph="&#xE720;" FontSize="16" /><TextBlock Text="语音转写" />
                 </StackPanel>
             </ListViewItem>
+            <ListViewItem Tag="draft">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE8BD;" FontSize="16" /><TextBlock Text="起草回复" />
+                </StackPanel>
+            </ListViewItem>
             <ListViewItem Tag="privacy">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <FontIcon Glyph="&#xE72E;" FontSize="16" /><TextBlock Text="隐私与写回" />
@@ -180,6 +185,30 @@
                     <ProgressBar x:Name="VoiceProgress" Maximum="100" Value="0" />
                     <TextBlock x:Name="VoiceModelStatus" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                TextWrapping="Wrap" />
+                </StackPanel>
+
+                <!--  起草回复  -->
+                <StackPanel x:Name="PaneDraft" Spacing="12" Visibility="Collapsed">
+                    <TextBlock FontSize="20" FontWeight="SemiBold">起草回复</TextBlock>
+                    <ToggleSwitch x:Name="DraftSwitch" OnContent="启用起草回复（判读完成后可用）" OffContent="起草回复：关" />
+                    <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="调用兼容 OpenAI Chat Completions 的接口生成 3 条候选回复，再由本地 laya 判读选出最合适的一条置顶。会话上下文与判读结论会发送到所填接口，请自行确认服务方。" />
+                    <StackPanel Spacing="4">
+                        <TextBox x:Name="DraftEndpointBox" Header="接口地址"
+                                 PlaceholderText="https://api.deepseek.com/chat/completions" />
+                        <TextBlock FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="须为完整的 chat/completions 端点；请求体按 OpenAI 格式构造。" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBox x:Name="DraftModelBox" Header="模型名" PlaceholderText="deepseek-chat" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBox x:Name="DraftApiKeyEnvBox" Header="API key 所在的环境变量名"
+                                 PlaceholderText="LLM_API_KEY" TextChanged="DraftApiKeyEnvBox_TextChanged" />
+                        <TextBlock x:Name="DraftKeyHint" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
                 </StackPanel>
 
                 <!--  隐私与写回  -->
