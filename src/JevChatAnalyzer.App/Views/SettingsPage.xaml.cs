@@ -78,6 +78,7 @@ public sealed partial class SettingsPage : Page
         RefreshAccounts();
         ShowModelStatus();
         var transcriber = AppState.Instance.Transcriber;
+        AutoSaveHint.Text = "设置更改后会自动保存";
         VoiceModelStatus.Text = transcriber.IsModelReady
             ? $"模型已就绪：{transcriber.ModelFiles.ModelPath}（{FormatSize(new FileInfo(transcriber.ModelFiles.ModelPath).Length)}）"
             : "模型未下载。";
@@ -527,6 +528,7 @@ public sealed partial class SettingsPage : Page
         s.DraftModel = string.IsNullOrWhiteSpace(DraftModelBox.Text) ? "deepseek-chat" : DraftModelBox.Text.Trim();
         s.DraftApiKeyEnv = string.IsNullOrWhiteSpace(DraftApiKeyEnvBox.Text) ? "LLM_API_KEY" : DraftApiKeyEnvBox.Text.Trim();
         state.SaveSettings();
+        AutoSaveHint.Text = $"已自动保存 {DateTimeOffset.Now:HH:mm:ss}";
 
         // 写回开关影响监听循环的落库分支，改完立即重启监听使其生效。
         if (autoWriteChanged && state.Account is not null) state.RestartMonitor();
