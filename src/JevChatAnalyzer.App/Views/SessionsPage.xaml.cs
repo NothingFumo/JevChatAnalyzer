@@ -557,11 +557,14 @@ public sealed partial class SessionsPage : Page
         SetStatus($"正在分析 [{_currentSession.DisplayName}] …");
         try
         {
-            var outcome = await state.Pipeline.AnalyzeAsync(_currentSession, true);
+            var result = await state.Pipeline.AnalyzeAsync(_currentSession, true);
+            var outcome = result.Outcome;
             if (outcome is null)
             {
-                SetStatus("该会话中没有找到可分析的对方消息（可能全是自己发言、系统消息，或语音未启用转写）。",
-                    InfoBarSeverity.Warning);
+                SetStatus(result.Skip == AnalysisSkip.AlreadyAnalyzed
+                        ? "这条对方消息已经判读过（结果见判读历史）；如需重新写回，可先「撤销写回」或使用「再次写回」。"
+                        : "该会话最近的消息里没有可分析的对方消息（可能全是自己发言、系统消息，或语音转写未开启）。",
+                    InfoBarSeverity.Informational);
                 return;
             }
 

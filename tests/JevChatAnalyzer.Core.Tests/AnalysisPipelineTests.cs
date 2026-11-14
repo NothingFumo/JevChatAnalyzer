@@ -45,7 +45,7 @@ public class AnalysisPipelineTests
         var sink = new FakeSink();
         var pipeline = New(new FakeChat([Mine, Theirs]), new FakeJudge(Verdict("对方在约时间")), sink);
 
-        var outcome = await pipeline.AnalyzeAsync(Session, true);
+        var outcome = (await pipeline.AnalyzeAsync(Session, true)).Outcome;
 
         Assert.NotNull(outcome);
         Assert.Equal(Theirs.LocalId, outcome!.Focus.LocalId);
@@ -60,11 +60,13 @@ public class AnalysisPipelineTests
     {
         var pipeline = New(new FakeChat([Theirs]), new FakeJudge(Verdict("摘要")), new FakeSink());
 
-        Assert.NotNull(await pipeline.AnalyzeAsync(Session, true));
-        Assert.Null(await pipeline.AnalyzeAsync(Session, true));
+        Assert.NotNull((await pipeline.AnalyzeAsync(Session, true)).Outcome);
+        var duplicate = await pipeline.AnalyzeAsync(Session, true);
+        Assert.Null(duplicate.Outcome);
+        Assert.Equal(AnalysisSkip.AlreadyAnalyzed, duplicate.Skip);
 
         pipeline.Forget(Session.SessionId, Theirs.LocalId);
-        Assert.NotNull(await pipeline.AnalyzeAsync(Session, true));
+        Assert.NotNull((await pipeline.AnalyzeAsync(Session, true)).Outcome);
     }
 
     [Fact]
@@ -85,7 +87,9 @@ public class AnalysisPipelineTests
         var sink = new FakeSink();
         var pipeline = New(new FakeChat([Mine]), new FakeJudge(Verdict("摘要")), sink);
 
-        Assert.Null(await pipeline.AnalyzeAsync(Session, true));
+        var result = await pipeline.AnalyzeAsync(Session, true);
+        Assert.Null(result.Outcome);
+        Assert.Equal(AnalysisSkip.NoMessage, result.Skip);
         Assert.Empty(sink.Judgments);
     }
 

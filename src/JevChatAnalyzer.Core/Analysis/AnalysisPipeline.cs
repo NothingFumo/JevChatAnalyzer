@@ -116,7 +116,7 @@ public sealed class AnalysisPipeline
     ///     blindFallback=true：laya 不可用时降级「盲起草」（无判读校准，不写回数据库）。
     ///     返回 null 表示没有可分析的对方消息。
     /// </summary>
-    public async Task<AnalysisOutcome?> AnalyzeAsync(ChatSession session, bool enqueue,
+    public async Task<AnalysisResult> AnalyzeAsync(ChatSession session, bool enqueue,
         bool blindFallback = true, CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct);
@@ -132,9 +132,20 @@ public sealed class AnalysisPipeline
             // 语音转写开启时，上下文里的语音也转成文字再送入 laya（焦点消息同样受益）
             messages = TranscribeVoiceMessages(messages, settings);
             var focus = PickFocus(messages, settings);
-            if (focus is null) return null;
+            if (focus is null && !allContext)
+            {
+                // 最近窗口可能全是我方/系统消息：向外多扫一段，找到目标后再把该段作为上下文。
+                var deeper = _chat.ReadSessionMessages(session.SessionId, Math.Max(200, settings.ContextTurns + 5));
+                if (deeper.Count > MaxContextMessages)
+                    deeper = deeper.Skip(deeper.Count - MaxContextMessages).ToList();
+                deeper = TranscribeVoiceMessages(deeper, settings);
+                focus = PickFocus(deeper, settings);
+                if (focus is not null) messages = deeper;
+            }
+
+            if (focus is null) return AnalysisResult.NoMessage;
             var key = $"{session.SessionId}#{focus.LocalId}";
-            if (_analyzed.ContainsKey(key)) return null; // 监听与手动重复触发同一焦点
+            if (_analyzed.ContainsKey(key)) return AnalysisResult.Duplicate; // 监听与手动重复触发同一焦点
 
             var request = JudgeProtocol.BuildRequest(
                 messages, focus, session.DisplayName, session.Kind == SessionKind.Group, settings.MyWxId);
@@ -185,7 +196,7 @@ public sealed class AnalysisPipeline
 
             var outcome = new AnalysisOutcome(session, focus, verdict, enqueued);
             Analyzed?.Invoke(outcome);
-            return outcome;
+            return AnalysisResult.Done(outcome);
         }
         finally
         {

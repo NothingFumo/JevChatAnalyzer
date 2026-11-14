@@ -192,7 +192,7 @@ public sealed class MessageFlow
             }
 
             // 立即触发分析（管线内部串行 + 焦点去重）
-            var outcome = await _pipeline.AnalyzeAsync(session, true);
+            var outcome = (await _pipeline.AnalyzeAsync(session, true)).Outcome;
             lock (_lock)
             {
                 _cursors[session.SessionId] = focusCandidate.SortSeq;

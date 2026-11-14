@@ -8,6 +8,29 @@ namespace JevChatAnalyzer.Core.Analysis;
 /// <summary>一次分析的结果。</summary>
 public sealed record AnalysisOutcome(ChatSession Session, ChatMessage Focus, JudgeVerdict Verdict, bool Enqueued);
 
+/// <summary>为什么没有产出判读结果。</summary>
+public enum AnalysisSkip
+{
+    /// <summary>正常产出。</summary>
+    None,
+
+    /// <summary>上下文里没有可分析的对方消息（全是自己/系统消息，或语音未转写）。</summary>
+    NoMessage,
+
+    /// <summary>这条焦点消息已经判读过，不再重复执行。</summary>
+    AlreadyAnalyzed
+}
+
+/// <summary>一次分析请求的结果：成功带 outcome，否则带跳过原因。</summary>
+public readonly record struct AnalysisResult(AnalysisOutcome? Outcome, AnalysisSkip Skip)
+{
+    public static AnalysisResult Done(AnalysisOutcome outcome) => new(outcome, AnalysisSkip.None);
+
+    public static readonly AnalysisResult NoMessage = new(null, AnalysisSkip.NoMessage);
+
+    public static readonly AnalysisResult Duplicate = new(null, AnalysisSkip.AlreadyAnalyzed);
+}
+
 /// <summary>判读窗口参数：每次分析取一次快照，设置改了立刻生效。</summary>
 public sealed record AnalysisSettings
 {
