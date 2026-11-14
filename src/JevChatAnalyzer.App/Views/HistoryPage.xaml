@@ -81,14 +81,15 @@
                                            Foreground="{Binding StateForeground}" />
                             </Border>
                             <Button Grid.Column="3" Click="Detail_Click" VerticalAlignment="Center"
-                                    Width="32" Height="28" Padding="0"
+                                    Width="32" Height="32" Padding="0"
                                     Background="Transparent" BorderThickness="0"
                                     ToolTipService.ToolTip="查看这条判读的七题明细">
                                 <FontIcon Glyph="&#xE946;" FontSize="14" />
                             </Button>
                             <Button Grid.Column="4" Click="Delete_Click" VerticalAlignment="Center"
-                                    Width="32" Height="28" Padding="0"
+                                    Width="32" Height="32" Padding="0"
                                     Background="Transparent" BorderThickness="0"
+                                    Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                     ToolTipService.ToolTip="删除这条判读记录（不影响微信数据）">
                                 <FontIcon Glyph="&#xE74D;" FontSize="14" />
                             </Button>

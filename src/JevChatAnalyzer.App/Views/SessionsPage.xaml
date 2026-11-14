@@ -61,6 +61,7 @@
             <TextBlock Text="实时监听" FontSize="12" VerticalAlignment="Center"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <ToggleSwitch x:Name="MonitorSwitch" OnContent="" OffContent="" MinWidth="0" Height="32"
+                          AutomationProperties.Name="实时监听"
                           VerticalAlignment="Center" Toggled="MonitorSwitch_Toggled"
                           ToolTipService.ToolTip="开启后收到对方新消息立即判读并写回" />
             <Border Width="1" Height="16" Margin="4,0" VerticalAlignment="Center"
@@ -179,6 +180,7 @@
                                                    Text="{Binding Subtitle}" />
                                     </StackPanel>
                                     <Button Height="32" Grid.Column="3" Content="{Binding ToggleLabel}"
+                                            AutomationProperties.Name="{Binding ToggleLabel}"
                                             Click="Toggle_Click"
                                             CornerRadius="14" Padding="14,4" MinWidth="92" VerticalAlignment="Center"
                                             Background="Transparent" BorderThickness="1"

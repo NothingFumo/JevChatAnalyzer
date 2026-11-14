@@ -115,6 +115,7 @@
                                         <Button Grid.Column="4" Click="AccountDelete_Click" VerticalAlignment="Center"
                                                 Width="32" Height="32" Padding="0" FontSize="12"
                                                 Background="Transparent" BorderThickness="0"
+                                                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                                 ToolTipService.ToolTip="从保管库删除该账号">
                                             <FontIcon Glyph="&#xE74D;" FontSize="12" />
                                         </Button>
