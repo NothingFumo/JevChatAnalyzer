@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" width="160" alt="JevChatAnalyzer" />
+</p>
+
 # JevChatAnalyzer
 
 微信 4.x 数据库直读的 Jev 聊天判读工具：从本机已登录微信的加密数据库直接取消息，交给本机进程内的 laya 判读引擎（TorchSharp 直载权重，离线可用）做意图、情绪与风险判读；判读结论可写回微信数据库为一条引用消息，全程可撤销、可还原。
