@@ -190,7 +190,7 @@ public sealed partial class SessionsPage : Page
             {
                 FontSize = 13,
                 TextWrapping = TextWrapping.Wrap,
-                Text = $"{spec.Instructions}  {answer}"
+                Text = $"{spec.Instructions}  {JudgeProtocol.DescribeAnswer(spec, answer)}"
             });
         }
 

@@ -48,10 +48,16 @@ public sealed class LayaJudge : IAsyncDisposable
         EnsureReady();
         try
         {
+            // 风险题交给确定性扫描：本地 laya 的风险判断不可靠，避免给出“无风险”的假安心。
+            var specs = JudgeProtocol.Specs.Where(s => s.Id != JudgeProtocol.RiskId).ToList();
             var answers = await _source
-                .AnswerAsync(JudgeProtocol.BuildState(request), JudgeProtocol.Specs, ct)
+                .AnswerAsync(JudgeProtocol.BuildState(request), specs, ct)
                 .ConfigureAwait(false);
-            return JudgeProtocol.ToVerdict(answers, _source.ModelId);
+            var merged = new Dictionary<string, JudgeAnswer>(answers)
+            {
+                [JudgeProtocol.RiskId] = RiskScanner.Scan(request.Focus.Text)
+            };
+            return JudgeProtocol.ToVerdict(merged, _source.ModelId);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

@@ -125,7 +125,8 @@ public sealed record JudgeVerdict
 }
 
 /// <summary>单题答案。</summary>
-public sealed record JudgeAnswer(string Kind, string? Label, double Value, double Confidence)
+public sealed record JudgeAnswer(string Kind, string? Label, double Value, double Confidence,
+    IReadOnlyDictionary<string, double>? Probabilities = null)
 {
     public override string ToString()
     {

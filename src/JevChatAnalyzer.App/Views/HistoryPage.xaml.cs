@@ -169,7 +169,7 @@ public sealed partial class HistoryPage : Page
             {
                 FontSize = 13,
                 TextWrapping = TextWrapping.Wrap,
-                Text = $"{spec.Instructions}  {answer}"
+                Text = $"{spec.Instructions}  {JudgeProtocol.DescribeAnswer(spec, answer)}"
             });
         }
 

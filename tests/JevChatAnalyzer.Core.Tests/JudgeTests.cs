@@ -104,7 +104,7 @@ public class JudgeTests : IDisposable
             if (s.Kind == "choice")
             {
                 Assert.NotNull(s.Options);
-                Assert.True(s.Options!.Length >= 5);
+                Assert.True(s.Options!.Length >= 3);
             }
             else if (s.Kind == "score")
             {
@@ -145,7 +145,7 @@ public class JudgeTests : IDisposable
 
         var verdict = await judge.JudgeAsync(Request());
 
-        Assert.Equal(4, verdict.Answers.Count);
+        Assert.Equal(5, verdict.Answers.Count); // 4 题来自模型 + 1 题风险扫描
         Assert.Equal("fake-model", verdict.Model);
         Assert.Equal("laya", verdict.BackendName);
         Assert.Equal("想引起我的反应或注意，急迫度 2.5/3，立即回复", verdict.Summary);

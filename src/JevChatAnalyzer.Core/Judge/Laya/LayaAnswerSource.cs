@@ -41,7 +41,8 @@ internal sealed class LayaAnswerSource(LayaModel model) : IAnswerSource
         IReadOnlyList<QuestionSpec> specs, CancellationToken ct)
     {
         var agent = await GetAgentAsync(ct).ConfigureAwait(false);
-        var questions = BuildQuestions(specs);
+        var note = state.ContainsKey("背景") ? JudgeProtocol.BackgroundNote : "";
+        var questions = BuildQuestions(specs, note);
         var stateJson = state.ToJsonString();
         var result = await Task.Run(() => Predict(agent, stateJson, questions, ct), ct).ConfigureAwait(false);
         return ToAnswers(result, specs);
@@ -131,17 +132,24 @@ internal sealed class LayaAnswerSource(LayaModel model) : IAnswerSource
         }
     }
 
-    private static Questions BuildQuestions(IReadOnlyList<QuestionSpec> specs)
+    private static Questions BuildQuestions(IReadOnlyList<QuestionSpec> specs, string note)
     {
         var questions = new Questions();
         foreach (var spec in specs)
+        {
+            var instructions = spec.Instructions + note;
             questions = spec.Kind switch
             {
-                "choice" => questions.Choice(spec.Id, spec.Instructions,
+                "choice" => questions.Choice(spec.Id, instructions,
                     spec.Options!.Select(o => (o.Label, (string?)o.Description))),
-                "score" => questions.Score(spec.Id, spec.Instructions, spec.Levels!),
-                _ => questions.Noul(spec.Id, spec.Instructions, _ => { })
+                "score" => questions.Score(spec.Id, instructions, spec.Levels!),
+                _ => questions.Noul(spec.Id, instructions, b =>
+                {
+                    if (spec.Noul is { } criteria) b.WhenTrue(criteria.True).WhenFalse(criteria.False);
+                })
             };
+        }
+
         return questions;
     }
 
@@ -155,7 +163,8 @@ internal sealed class LayaAnswerSource(LayaModel model) : IAnswerSource
             answers[spec.Id] = spec.Kind switch
             {
                 "choice" => new JudgeAnswer("choice", result.Choice(spec.Id).Choice,
-                    0, result.Choice(spec.Id).Confidence),
+                    0, result.Choice(spec.Id).Confidence,
+                    new Dictionary<string, double>(result.Choice(spec.Id).Probabilities)),
                 "score" => new JudgeAnswer("score", null, result.Score(spec.Id).Score,
                     result.Score(spec.Id).Confidence),
                 _ => Noul(result, spec.Id)
