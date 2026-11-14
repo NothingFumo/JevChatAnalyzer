@@ -5,6 +5,7 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Navigation;
 
 namespace JevChatAnalyzer.App.Views;
 
@@ -19,6 +20,13 @@ public sealed partial class HistoryPage : Page
     public HistoryPage()
     {
         InitializeComponent();
+        Load();
+    }
+
+    /// <summary>判读历史页有导航缓存：每次进入都重新读台账，避免显示过期列表。</summary>
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
         Load();
     }
 
@@ -53,6 +61,7 @@ public sealed partial class HistoryPage : Page
         var list = rows.ToList();
         HistoryList.ItemsSource = list;
         CountText.Text = $"{list.Count} / {_rows.Count} 条";
+        EmptyPanel.Visibility = list.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void Filter_Changed(object sender, object e)
@@ -68,6 +77,78 @@ public sealed partial class HistoryPage : Page
     private void Refresh_Click(object sender, RoutedEventArgs e)
     {
         Load();
+    }
+
+    /// <summary>从会话页「记录」或判读结果跳转：按会话名过滤。</summary>
+    public void FilterByTitle(string title)
+    {
+        SearchBox.Text = title;
+        ApplyFilter();
+    }
+
+    private async void Revoke_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: HistoryRow row } || row.View.WriteBack is not { } entry) return;
+        var confirm = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "撤销这条写回",
+            Content = $"将把 {entry.WrittenAt:MM-dd HH:mm} 对「{row.Record.SessionTitle}」的写回还原成原文。" +
+                      "微信库回到本应用修改之前的状态。是否继续？",
+            PrimaryButtonText = "撤销",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close
+        };
+        if (await confirm.ShowSerializedAsync() != ContentDialogResult.Primary) return;
+
+        if (AppState.Instance.WriteBack is not { } writeBack)
+        {
+            await ShowMessageAsync("无法撤销", "请先在「对话与监听」页打开微信数据。");
+            return;
+        }
+
+        try
+        {
+            writeBack.Revoke(entry);
+            if (entry.AnnotatedLocalId is { } localId)
+                AppState.Instance.Pipeline.Forget(entry.SessionId, localId);
+            Load();
+        }
+        catch (Exception ex)
+        {
+            await ShowMessageAsync("撤销失败", ex.Message);
+        }
+    }
+
+    private async void Reapply_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: HistoryRow row } || row.View.WriteBack is not { } entry) return;
+        if (AppState.Instance.WriteBack is not { } writeBack)
+        {
+            await ShowMessageAsync("无法写回", "请先在「对话与监听」页打开微信数据。");
+            return;
+        }
+
+        try
+        {
+            writeBack.Reapply(entry);
+            Load();
+        }
+        catch (Exception ex)
+        {
+            await ShowMessageAsync("再次写回失败", ex.Message);
+        }
+    }
+
+    private Task<ContentDialogResult> ShowMessageAsync(string title, string content)
+    {
+        return new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = title,
+            Content = content,
+            CloseButtonText = "知道了"
+        }.ShowSerializedAsync();
     }
 
     private async void Detail_Click(object sender, RoutedEventArgs e)
@@ -196,5 +277,14 @@ public sealed partial class HistoryPage : Page
         public string Initial => _avatar.Initial;
 
         public Brush AvatarBrush => _avatar.Brush;
+
+        public Visibility RevokeVisibility =>
+            State == WriteState.Committed ? Visibility.Visible : Visibility.Collapsed;
+
+        public Visibility ReapplyVisibility =>
+            State == WriteState.Revoked && View.WriteBack?.QuoteText is not null &&
+            View.WriteBack.FocusJson is not null
+                ? Visibility.Visible
+                : Visibility.Collapsed;
     }
 }
