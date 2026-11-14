@@ -64,6 +64,8 @@
                           AutomationProperties.Name="实时监听"
                           VerticalAlignment="Center" Toggled="MonitorSwitch_Toggled"
                           ToolTipService.ToolTip="开启后收到对方新消息立即判读并写回" />
+            <TextBlock x:Name="MonitorScopeText" FontSize="12" VerticalAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <Border Width="1" Height="16" Margin="4,0" VerticalAlignment="Center"
                     Background="{ThemeResource ControlStrokeColorDefaultBrush}" />
             <TextBlock Text="间隔" FontSize="12" VerticalAlignment="Center"
@@ -131,8 +133,8 @@
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                        <Button Padding="12,0" Content="开启所选" Click="EnableSelected_Click" Height="32" />
-                        <Button Padding="12,0" Content="关闭所选" Click="DisableSelected_Click" Height="32" />
+                        <Button Padding="12,0" x:Name="EnableSelectedButton" Content="开启所选" Click="EnableSelected_Click" Height="32" />
+                        <Button Padding="12,0" x:Name="DisableSelectedButton" Content="关闭所选" Click="DisableSelected_Click" Height="32" />
                     </StackPanel>
                 </Grid>
 

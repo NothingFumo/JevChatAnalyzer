@@ -58,6 +58,16 @@ public sealed partial class MainWindow : Window
         if (item is not null) Nav.SelectedItem = item;
     }
 
+    /// <summary>跳到判读历史并按会话名过滤（会话页「记录」/判读结果「查看记录」用）。</summary>
+    public void NavigateToHistory(string title)
+    {
+        Navigate("history");
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (ContentFrame.Content is HistoryPage page) page.FilterByTitle(title);
+        });
+    }
+
     /// <summary>托盘菜单「退出」直接调（App 转发）。</summary>
     public void RequestExit()
     {

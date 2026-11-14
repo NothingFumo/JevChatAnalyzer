@@ -29,6 +29,7 @@ public sealed partial class SessionsPage : Page
 
     private List<SessionRow> _rows = [];
     private bool _selectionUpdating;
+    private bool _suppressSelectCheck;
     private IReadOnlyList<ChatSession> _sessions = [];
 
     public SessionsPage()
@@ -156,12 +157,13 @@ public sealed partial class SessionsPage : Page
     {
         BusyRing.IsActive = busy;
 
-        RefreshButton.IsEnabled = !busy && AppState.Instance.Account is not null;
-        AnalyzeButton.IsEnabled = !busy && _currentSession is not null && AppState.Instance.Account is not null;
-        DraftButton.IsEnabled = !busy && _lastOutcome is not null;
-        RevokeButton.IsEnabled = !busy && AppState.Instance.Ledger.ListByState(WriteState.Committed).Count > 0;
-        ReapplyButton.IsEnabled = !busy && AppState.Instance.Ledger.ListByState(WriteState.Revoked)
-            .Any(en => en.QuoteText is not null && en.AnnotatedLocalId is not null);
+        // 按钮只在忙碌时禁用；缺少前置条件时点击给出原因，而不是变成无解释的灰按钮。
+        var connected = AppState.Instance.Account is not null;
+        RefreshButton.IsEnabled = !busy && connected;
+        AnalyzeButton.IsEnabled = !busy && connected;
+        DraftButton.IsEnabled = !busy && connected;
+        RevokeButton.IsEnabled = !busy && connected;
+        ReapplyButton.IsEnabled = !busy && connected;
     }
 
     private void ShowOutcome(AnalysisOutcome outcome)
@@ -170,7 +172,7 @@ public sealed partial class SessionsPage : Page
     }
 
     /// <summary>判读结果用对话框呈现（右侧常驻面板已移除，避免大片空白）。</summary>
-    private async Task ShowVerdictAsync(AnalysisOutcome outcome)
+    private async Task<ContentDialogResult> ShowVerdictAsync(AnalysisOutcome outcome)
     {
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(new TextBlock
@@ -201,13 +203,17 @@ public sealed partial class SessionsPage : Page
                    (outcome.Enqueued ? " · 已写回引用块" : "")
         });
 
-        await new ContentDialog
+        var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
             Title = "判读结果",
             Content = new ScrollViewer { MaxHeight = 420, Content = panel },
-            CloseButtonText = "关闭"
-        }.ShowSerializedAsync();
+            PrimaryButtonText = "起草回复",
+            SecondaryButtonText = "查看记录",
+            CloseButtonText = "关闭",
+            DefaultButton = ContentDialogButton.Close
+        };
+        return await dialog.ShowSerializedAsync();
     }
 
     /// <summary>页面已开启导航缓存（订阅只注册一次），每次进入时刷新会话与状态。</summary>
@@ -231,6 +237,7 @@ public sealed partial class SessionsPage : Page
             EmptyHint.Text = "尚未连接微信数据。应用启动会自动连接；如果一直失败，请先到「设置 → 微信密钥」读取密钥后重试。";
             SummaryText.Text = "";
             SelectedText.Text = "";
+            MonitorScopeText.Text = "";
             return;
         }
 
@@ -251,7 +258,19 @@ public sealed partial class SessionsPage : Page
         RefreshButton.IsEnabled = true;
         UpdateConnectionState();
 
-        if (_currentSession is null && _rows.Count > 0) SessionList.SelectedIndex = 0; // 自动选中最近活跃会话
+        if (_currentSession is null && _rows.Count > 0)
+        {
+            // 自动选中最近活跃会话，但不要顺手把它加入批量选择
+            _suppressSelectCheck = true;
+            try
+            {
+                SessionList.SelectedIndex = 0;
+            }
+            finally
+            {
+                _suppressSelectCheck = false;
+            }
+        }
     }
 
     private void ApplyFilter()
@@ -279,11 +298,22 @@ public sealed partial class SessionsPage : Page
     private void UpdateCounters()
     {
         var state = AppState.Instance;
-        SelectedText.Text = $"已选 {_rows.Count(r => r.IsSelected)} 个";
+        var visible = VisibleRows;
+        var selected = _rows.Count(r => r.IsSelected);
+        var hidden = _rows.Count(r => r.IsSelected && !visible.Contains(r));
+        SelectedText.Text = hidden > 0
+            ? $"已选 {selected} 个（含 {hidden} 个未显示）"
+            : $"已选 {selected} 个";
+        EnableSelectedButton.Content = $"开启所选（{selected}）";
+        DisableSelectedButton.Content = $"关闭所选（{selected}）";
         SummaryText.Text = state.Settings.MonitorAll
             ? $"全部 {_rows.Count} 个会话"
             : $"{_rows.Count(r => r.Monitored)}/{_rows.Count} 个会话";
-        var visible = VisibleRows;
+        MonitorScopeText.Text = !state.Settings.MonitorEnabled
+            ? "监听：已关闭"
+            : state.Settings.MonitorAll
+                ? $"监听：全部 {_rows.Count} 个"
+                : $"监听：{_rows.Count(r => r.Monitored)} 个";
         _selectionUpdating = true;
         SelectAllBox.IsChecked = visible.Count > 0 && visible.All(r => r.IsSelected);
         _selectionUpdating = false;
@@ -323,9 +353,11 @@ public sealed partial class SessionsPage : Page
     }
 
     /// <summary>行尾胶囊：单个会话开/关实时监听。</summary>
-    private void Toggle_Click(object sender, RoutedEventArgs e)
+    private async void Toggle_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { DataContext: SessionRow row }) SetMonitored([row], !row.Monitored);
+        if (sender is not Button { DataContext: SessionRow row }) return;
+        if (row.Monitored && WouldLeaveNothingMonitored([row]) && !await ConfirmStopAllAsync()) return;
+        SetMonitored([row], !row.Monitored);
     }
 
     private void EnableSelected_Click(object sender, RoutedEventArgs e)
@@ -333,9 +365,43 @@ public sealed partial class SessionsPage : Page
         SetMonitored(_rows.Where(r => r.IsSelected), true);
     }
 
-    private void DisableSelected_Click(object sender, RoutedEventArgs e)
+    private async void DisableSelected_Click(object sender, RoutedEventArgs e)
     {
-        SetMonitored(_rows.Where(r => r.IsSelected), false);
+        var targets = _rows.Where(r => r.IsSelected).ToList();
+        if (targets.Count == 0)
+        {
+            SelectedText.Text = "先勾选左侧的会话";
+            return;
+        }
+
+        if (WouldLeaveNothingMonitored(targets) && !await ConfirmStopAllAsync()) return;
+        SetMonitored(targets, false);
+    }
+
+    /// <summary>这批会话关掉后，是否一个监听中的会话都不剩。</summary>
+    private bool WouldLeaveNothingMonitored(IEnumerable<SessionRow> turningOff)
+    {
+        var state = AppState.Instance;
+        var allIds = _rows.Select(r => r.Session.SessionId).ToHashSet(StringComparer.Ordinal);
+        var set = state.Settings.MonitorAll
+            ? new HashSet<string>(allIds, StringComparer.Ordinal)
+            : SessionWhitelist.Parse(state.Settings.MonitorSessions);
+        foreach (var row in turningOff) set.Remove(row.Session.SessionId);
+        return set.Count == 0;
+    }
+
+    private async Task<bool> ConfirmStopAllAsync()
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "关闭全部监听？",
+            Content = "关闭后没有任何会话处于实时监听，自动判读与写回会停止；已写回的内容不受影响。",
+            PrimaryButtonText = "关闭监听",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close
+        };
+        return await dialog.ShowSerializedAsync() == ContentDialogResult.Primary;
     }
 
     /// <summary>单个/批量开关监听：统一落到 MonitorAll + 白名单两个字段。</summary>
@@ -387,25 +453,13 @@ public sealed partial class SessionsPage : Page
     private void RecordsRow_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { DataContext: SessionRow row }) return;
-        var views = AppState.Instance.Ledger.Recent(500)
-            .Where(v => v.Record.SessionId == row.Session.SessionId)
-            .Take(50)
-            .ToList();
-        var text = views.Count == 0
-            ? "这个会话还没有判读记录。"
-            : string.Join("\n", views.Select(v =>
-                $"{v.Record.CreatedAt:MM-dd HH:mm} · {Truncate(v.Record.Verdict.Summary, 60)}{StateLabel(v.WriteBack)}"));
-        _ = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            Title = $"「{row.DisplayName}」的判读记录",
-            Content = new ScrollViewer
-            {
-                MaxHeight = 360,
-                Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, FontSize = 13 }
-            },
-            CloseButtonText = "关闭"
-        }.ShowSerializedAsync();
+        NavigateToHistory(row.DisplayName);
+    }
+
+    /// <summary>跳判读历史并按会话名过滤；导航由主窗口统一维护，避免侧栏选中态脱节。</summary>
+    private static void NavigateToHistory(string title)
+    {
+        if (App.MainAppWindow is MainWindow window) window.NavigateToHistory(title);
     }
 
     private static string StateLabel(WriteBackEntry? entry)
@@ -470,6 +524,13 @@ public sealed partial class SessionsPage : Page
     private void Session_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (SessionList.SelectedItem is not SessionRow row) return;
+        // 点行 = 设为当前会话 + 勾选：批量动作与「分析选中」共用同一套选择
+        if (!_suppressSelectCheck && !row.IsSelected)
+        {
+            row.IsSelected = true;
+            UpdateCounters();
+        }
+
         if (_currentSession?.SessionId != row.Session.SessionId) _lastOutcome = null; // 切换会话后起草按钮重新等待本次判读
         _currentSession = row.Session;
         SetBusy(false);
@@ -484,7 +545,13 @@ public sealed partial class SessionsPage : Page
     {
         if (_analysisRunning) return; // 连点行内分析/主按钮时不并发判读，避免并发对话框
         var state = AppState.Instance;
-        if (_currentSession is null || state.Account is null) return;
+        if (_currentSession is null || state.Account is null)
+        {
+            SetStatus(_currentSession is null ? "请先选择一个会话。" : "请先在「设置 → 微信密钥」连接微信数据。",
+                InfoBarSeverity.Informational);
+            return;
+        }
+
         _analysisRunning = true;
         SetBusy(true);
         SetStatus($"正在分析 [{_currentSession.DisplayName}] …");
@@ -511,7 +578,18 @@ public sealed partial class SessionsPage : Page
                         ? "判读完成——该消息不是文本或引用回复，未写回。"
                         : "判读完成（自动写回已在设置中关闭）。",
                 InfoBarSeverity.Success);
-            await ShowVerdictAsync(outcome);
+            var action = await ShowVerdictAsync(outcome);
+            if (action == ContentDialogResult.Primary)
+            {
+                await DraftSuggestionsAsync();
+                return;
+            }
+
+            if (action == ContentDialogResult.Secondary)
+            {
+                NavigateToHistory(outcome.Session.DisplayName);
+                return;
+            }
         }
         catch (Exception ex)
         {
@@ -526,8 +604,17 @@ public sealed partial class SessionsPage : Page
 
     private async void Draft_Click(object sender, RoutedEventArgs e)
     {
+        await DraftSuggestionsAsync();
+    }
+
+    private async Task DraftSuggestionsAsync()
+    {
         var state = AppState.Instance;
-        if (_lastOutcome is null || _currentSession is null) return;
+        if (_lastOutcome is null || _currentSession is null)
+        {
+            SetStatus("请先分析一条对方消息，再起草回复。", InfoBarSeverity.Informational);
+            return;
+        }
 
         if (!state.Settings.DraftEnabled)
         {
